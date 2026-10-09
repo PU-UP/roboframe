@@ -1,0 +1,8 @@
+# Root build trees and installed/generated outputs.
+/build*/
+# Historical snapshot remains on disk; current source is tracked separately.
+/history/
+# Local tooling caches.
+.cache/
+__pycache__/
+*.py[cod]
