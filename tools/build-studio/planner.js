@@ -31,7 +31,7 @@
     if (!scenario.buildReady || components.some(item => !item.implemented))
       reasons.push("所选 integration 或组件仅为示意，尚未接入当前 CMake。");
     if (!allSource && !allPackage)
-      reasons.push("逐组件混合切换尚未实现；当前 CMake 只有整体来源开关。");
+      reasons.push("此原型尚未生成逐组件命令；本分支 CMake 已支持真实组件的混合构建，详见建图文档。");
     if (!platform.buildReady)
       reasons.push("ARM64 工具链、sysroot 和依赖包尚未配置，也未做交叉编译验证。");
     if (!allSource && (!prefix.startsWith("/") || /[\r\n\0;]/.test(prefix)))

@@ -1,5 +1,8 @@
 # roboframe：最小 SDK 与三层骨架
 
+本分支增加可选的真实数据建图产品；[完整设计、运行和复查报告](docs/mapping.md)。
+原基础入口保持默认，使用 `-DROBOFRAME_BUILD_MAPPING=ON` 开启建图。
+
 C++14。当前主线为 interface → integration → component，SDK 为这些层提供公共约定。
 当前使用本地 Git 仓库，未配置远程或 submodule；components/sample-accumulator 是完整、可独立构建的组件目录。
 旧实现原样保留在 history/，历史设计回顾见 [design-reset.md](docs/design-reset.md)。
