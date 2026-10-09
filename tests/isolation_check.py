@@ -93,7 +93,7 @@ with tempfile.TemporaryDirectory(prefix='roboframe-isolation-') as directory:
     prefix.rename(relocated)
     app = temp / 'app-source'
     copy_items(ROOT, app, ['CMakeLists.txt', 'VERSION', 'main.cpp',
-                           'interface', 'integration', 'tests'])
+                           'interface', 'integration', 'tests', 'cmake'])
     configure(app, temp / 'app-build', relocated,
               ['-DROBOFRAME_USE_INSTALLED_COMPONENTS=ON'])
     build_and_test(temp / 'app-build')
