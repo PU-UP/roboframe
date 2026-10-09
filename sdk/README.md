@@ -1,4 +1,4 @@
-# Roboframe SDK 1.0
+# Roboframe SDK 1.1
 
 SDK 是 integration 与 component 共用的最小基础约定，也可以被 interface 使用。
 SDK 不包含具体组件、产品 integration、ROS/DDS、图像处理或 BT；依赖方向只有上层 → SDK。
@@ -96,3 +96,8 @@ cmake --install build-sdk --prefix /tmp/roboframe-sdk
 消费者只需 find_package(RoboframeSDK 1.0 CONFIG REQUIRED)，链接 Roboframe::sdk。
 安装包包含公开头文件、CMake 包和 share/roboframe/templates，不包含产品实现。
 开发模板说明见 [templates/README.md](templates/README.md)。
+
+## 建图分支的最小数据类型扩展
+
+1.1 增加 geometry2d.hpp 和 grid.hpp，定义跨 odom/grid/store 共用的位姿和只读地图。
+具体 Scan 仍由组件定义；没有引入中央组件数据注册表。相关验证与适用范围见 ../docs/mapping.md。
