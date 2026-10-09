@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>roboframe · 建图验收回放</title>
+<style>
+:root{font:14px "Segoe UI","Microsoft YaHei",sans-serif;color:#18364c;background:#eef3f8}
+*{box-sizing:border-box}body{margin:0}header{background:white;padding:22px 4vw;border-bottom:1px solid #d1dfe8}
+header strong{font-size:19px}header span{float:right;color:#416575;font-size:12px}
+main{max-width:1250px;margin:26px auto;padding:0 24px}.layout{display:grid;grid-template-columns:1fr 310px;gap:20px}
+.panel{background:white;border:1px solid #d1dfe8;border-radius:10px;padding:20px}
+h1{font-size:25px;margin:0 0 10px}h2{font-size:15px;margin:0 0 16px}p{line-height:1.8}
+.muted{color:#546c7c;font-size:12px}canvas{width:100%;height:auto;display:block;background:#cdcdcd;border:1px solid #cbd5df}
+.controls{display:flex;align-items:center;gap:14px;margin:18px 0 12px}input{flex:1;min-width:0;accent-color:#007f78}
+button{padding:9px 18px;background:#17394f;color:white;border:0;border-radius:6px;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid #007f78;outline-offset:3px}
+dl{margin:0}dt{color:#546c7c;font-size:12px;margin-top:15px}dd{margin:5px 0 0;font-weight:600}
+.legend{font-size:12px;margin:12px 0;display:flex;gap:16px;flex-wrap:wrap}
+.blue{color:#1664ad}.orange{color:#ba6712}.stage{background:#edf6f5;border-left:3px solid #007f78;padding:12px;margin-bottom:18px}
+a{color:#1664ad}.files{display:flex;gap:14px;margin:18px 0}.warning{font-size:12px;border-top:1px solid #d1dfe8;padding-top:15px;line-height:1.9;color:#546c7c}
+@media(max-width:900px){.layout{grid-template-columns:1fr}header span{float:none;display:block;margin-top:8px}}
+</style>
+<header><strong>roboframe / 建图验收</strong><span>真实 odom + scan · 独立进程 IPC · C++14</span></header>
+<main><h1>地图从无到有，结束后保持不变。</h1>
+<p class="muted">拖动时间轴查看真实地图快照与录制轨迹。地图按检查点更新，轨迹按扫描时间推进；没有伪造实时 SLAM 或运动控制。</p>
+<div class="layout"><section class="panel">
+<canvas id="map" aria-label="占据地图和录制轨迹"></canvas>
+<div class="legend"><span>白：空闲</span><span>黑：占据</span><span>灰：未知</span><span class="blue">蓝：建图期间</span><span class="orange">橙：结束后仍在回放</span></div>
+<div class="controls"><button id="play">播放</button><input id="time" type="range" min="0" value="0" aria-label="回放帧"><output id="frame"></output></div>
+<p id="snapshot" class="muted"></p>
+</section><aside class="panel">
+<h2>链路与验收结果</h2><div class="stage" id="stage"></div>
+<p class="muted">Python 日志适配 → 管道 IPC → interface → integration<br>odom-buffer 时间匹配 → occupancy-grid → map-store</p>
+<dl id="stats"></dl>
+<div class="files"><a href="summary.json">验收数据</a><a href="final.png">最终地图</a><a href="mapping-events.jsonl">指令回执</a></div>
+<p class="warning">使用原始里程计估计，未实现扫描匹配或回环优化。墙体重复、轨迹漂移应视为算法边界，不能解读为定位精度达标。结束建图不代表机器人已停止运动。</p>
+</aside></div></main>
+<script>
+const report=__REPORT__, s=report.summary, timeline=document.getElementById('time');
+const canvas=document.getElementById('map'), ctx=canvas.getContext('2d');
+canvas.width=s.width;canvas.height=s.height;timeline.max=s.replayed_scans;timeline.value=s.replayed_scans;
+const images=report.frames.map(f=>{const img=new Image();img.src=f.image;img.onload=draw;return img});
+const stats=[
+['数据输入',s.replayed_scans+' scan / '+s.replayed_odom+' odom'],
+['结束建图指令','第 '+s.finish_after+' 帧之后'],
+['实际进入地图',s.before.integrated+' 帧'],
+['时间匹配等丢弃',s.before.dropped+' 帧'],
+['结束后忽略',s.after.ignored+' scan；odom 继续输入'],
+['地图冻结 / 进程重启重载',s.frozen_equal&&s.reloaded_equal?'全部通过':'失败'],
+['地图',s.width+' × '+s.height+'；'+s.resolution+' m / cell']
+];
+const dl=document.getElementById('stats');
+for(const [k,v] of stats){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;dl.append(dt,dd)}
+function point(p){return [(p[1]-s.origin[0])/s.resolution,s.height-(p[2]-s.origin[1])/s.resolution]}
+function draw(){
+ const n=Number(timeline.value);ctx.fillStyle='#cdcdcd';ctx.fillRect(0,0,canvas.width,canvas.height);
+ let f=-1;for(let i=0;i<report.frames.length;i++)if(report.frames[i].after_scan<=n)f=i;
+ if(f>=0&&images[f].complete)ctx.drawImage(images[f],0,0);
+ ctx.lineWidth=Math.max(1.5,s.width/650);
+ for(const [start,end,color] of [[0,Math.min(n,s.finish_after),'#1664ad'],[s.finish_after-1,n,'#ba6712']]){
+  ctx.strokeStyle=color;ctx.beginPath();let pen=false;
+  for(let i=start;i<end;i++){const p=report.trajectory[i];if(!p||p[1]===null){pen=false;continue}const [x,y]=point(p);if(pen)ctx.lineTo(x,y);else ctx.moveTo(x,y);pen=true}ctx.stroke();
+ }
+ if(n>0){const p=report.trajectory[n-1];if(p[1]!==null){const [x,y]=point(p);ctx.fillStyle='#cb3b40';ctx.beginPath();ctx.arc(x,y,Math.max(3,s.width/200),0,Math.PI*2);ctx.fill()}}
+ document.getElementById('frame').textContent=n+' / '+s.replayed_scans;
+ document.getElementById('stage').textContent=n===0?'组件启动，尚未输入扫描':n<s.finish_after?'建图中：扫描与同一时刻的 odom 绑定':'地图已冻结并保存；后续数据不会改变地图';
+ document.getElementById('snapshot').textContent=f<0?'尚未到第一个地图检查点。':'当前显示真实快照：已融合 '+report.frames[f].revision+' 帧，数据时间 '+(report.frames[f].stamp_us/1e6).toFixed(2)+' s；已知栅格 '+report.frames[f].known.toLocaleString()+'。';
+}
+let timer=null;const button=document.getElementById('play');
+function stop(){clearInterval(timer);timer=null;button.textContent='播放'}
+button.onclick=()=>{if(timer){stop();return}if(Number(timeline.value)>=s.replayed_scans)timeline.value=0;button.textContent='暂停';timer=setInterval(()=>{timeline.value=Math.min(s.replayed_scans,Number(timeline.value)+Math.max(1,Math.floor(s.replayed_scans/200)));draw();if(Number(timeline.value)===s.replayed_scans)stop()},100)};
+timeline.oninput=()=>{stop();draw()};draw();
+</script></html>

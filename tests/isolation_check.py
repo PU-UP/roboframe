@@ -95,7 +95,7 @@ with tempfile.TemporaryDirectory(prefix='roboframe-isolation-') as directory:
     copy_items(ROOT, app, ['CMakeLists.txt', 'VERSION', 'main.cpp',
                            'interface', 'integration', 'tests', 'cmake'])
     configure(app, temp / 'app-build', relocated,
-              ['-DROBOFRAME_USE_INSTALLED_COMPONENTS=ON'])
+              ['-DROBOFRAME_USE_INSTALLED_COMPONENTS=ON', '-DROBOFRAME_BUILD_MAPPING=OFF'])
     build_and_test(temp / 'app-build')
     checks.append('PASS: relocated packages build source-isolated application; IPC unchanged')
 
