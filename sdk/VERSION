@@ -1,3 +1,3 @@
 # SDK release identity. Maintained at release time.
 set(ROBOFRAME_SDK_NAME "roboframe-sdk")
-set(ROBOFRAME_SDK_VERSION "1.3.0")
+set(ROBOFRAME_SDK_VERSION "2.0.0")

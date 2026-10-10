@@ -77,14 +77,12 @@ BUILD_TESTING=OFF 不要求 Python，不编译测试 main。
 升级后使用新 build 目录；旧包名、类名和 mapping_runtime 不再保留。
 
 ## 版本维护
-VERSION 由维护者在发布时调整，日常改源码不必每次改号。
-CMake 监听 VERSION 变化，自动更新编译元数据；源码变动仍由正常依赖追踪。
-SDK 升级不要求机械修改组件 VERSION；组件编译时自动记录 SDK 版本。
-公开语义变化时调整 VERSION 的 component_contract_version，重大不兼容改 major。
-SDK/组件 VERSION 都写明名称与版本；组件还声明最低 SDK，实际编译 SDK 自动写入安装清单。
-启动前核对 SDK 和契约，不兼容拒绝启动。版本号不能自动证明 C++ ABI 兼容。
-当前源码使用 SDK 1.3 的元数据构建工具；MapUpdater 契约 2.x，Odom/MapServer 契约 1.x。
-[SDK 规则](sdk/README.md)。
+SDK 维护者只维护 sdk/VERSION；产品维护者在 cmake/Dependencies.cmake 选择 SDK
+精确版本与组件清单。当前使用 SDK 2.0，旧组件包须重建。
+component 不再有手写 VERSION 或 contract_version，也不自行填写 SDK 要求。
+源码标识和实际编译 SDK 自动生成，安装包携带原始记录；启动时只检查 SDK 兼容性。
+源码变化自动更新指纹，SDK 与产物记录不同则按兼容规则拒绝，不篡改旧包记录。
+源码指纹用于追溯，不是兼容性保证。[SDK 规则](sdk/README.md)。
 
 当前串行调用、静态链接；没有增加 BT、线程池、动态插件或 ARM 工具链。
 

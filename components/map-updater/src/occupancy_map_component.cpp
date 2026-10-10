@@ -5,7 +5,7 @@
 
 namespace map_updater {
 roboframe::ComponentInfo GetComponentInfo() {
-    return {component_name, implementation_version, roboframe::sdk_version, contract_version};
+    return {component_name, source_id, roboframe::sdk_version};
 }
 void ValidateScan(const roboframe::Scan2D& scan) {
     roboframe::ValidateScan2D(scan);

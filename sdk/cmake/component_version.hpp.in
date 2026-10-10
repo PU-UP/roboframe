@@ -1,11 +1,9 @@
 #pragma once
-// Generated from the component VERSION. Edit the source manifest, not this header.
+// Generated from component sources and the selected SDK; do not edit.
 #include <roboframe/version.hpp>
 namespace @namespace@ {
 constexpr char component_name[] = "@component_name@";
-constexpr char implementation_version[] = "@component_version@";
-constexpr roboframe::Version contract_version{@contract_numbers@};
-constexpr roboframe::Version minimum_sdk_version{@sdk_min_numbers@};
-static_assert(roboframe::Compatible(roboframe::sdk_version, minimum_sdk_version),
-              "component requires the SDK minimum in VERSION, same major");
+constexpr char source_id[] = "@source_id@";
+static_assert(roboframe::Compatible(roboframe::sdk_version, {@sdk_numbers@}),
+              "component headers require a compatible SDK");
 } // namespace @namespace@

@@ -95,6 +95,9 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
     version = list(map(int, field(app / 'sdk/VERSION', 'ROBOFRAME_SDK_VERSION').split('.')))
     version[2] += 1
     change_field(app / 'sdk/VERSION', 'ROBOFRAME_SDK_VERSION', '.'.join(map(str, version)))
+    error = run(['cmake', '--build', work / 'source-sdk-build'], success=False)
+    assert 'Product selects SDK' in error
+    change_field(app / 'cmake/Dependencies.cmake', 'ROBOFRAME_REQUIRED_SDK_VERSION', '.'.join(map(str, version)))
     run(['cmake', '--build', work / 'source-sdk-build', '-j4'])
     generated = (work / 'source-sdk-build/sdk/generated/roboframe/sdk_version.hpp').read_text()
     assert '#define ROBOFRAME_SDK_VERSION_PATCH ' + str(version[2]) in generated
@@ -108,30 +111,57 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
         assert field(manifest, 'component_built_with_sdk') == sdk_version
     assert field(work / 'source-sdk-build/components/map-updater/VERSION',
                  'component_built_with_sdk') == '.'.join(map(str, version))
-    # Change only the component manifest; generated C++ and installed metadata must follow.
-    manifest = app / 'components/map-updater/VERSION'
-    change_field(manifest, 'component_version', '2.0.2')
-    change_field(manifest, 'component_contract_version', '2.1.0')
+    # Source edits regenerate identity without any developer-maintained VERSION.
+    build_manifest = work / 'source-sdk-build/components/map-updater/VERSION'
+    original_id = field(build_manifest, 'component_source_id')
+    source = app / 'components/map-updater/src/occupancy_map_component.cpp'
+    source.write_text(source.read_text() + '\n// Local uncommitted source change.\n')
     run(['cmake', '--build', work / 'source-sdk-build', '-j4'])
-    generated = (work / 'source-sdk-build/components/map-updater/generated/map_updater/version.hpp').read_text()
-    assert 'implementation_version[] = "2.0.2"' in generated
-    assert 'contract_version{2, 1, 0}' in generated
+    changed_id = field(build_manifest, 'component_source_id')
+    assert changed_id != original_id
+    assert field(relocated / 'share/roboframe/map-updater/VERSION', 'component_source_id') == original_id
     probe = work / 'metadata.cpp'
     probe.write_text('#include <map_updater/occupancy_map_component.hpp>\n'
         '#include <string>\nint main() { auto info = map_updater::GetComponentInfo();\n'
-        'return std::string(info.implementation_version) != "2.0.2" || '
-        'info.contract.minor != 1 || info.built_with_sdk.patch != ' + str(version[2]) + '; }\n')
+        'return std::string(info.source_id) != "' + changed_id + '" || '
+        'info.built_with_sdk.patch != ' + str(version[2]) + '; }\n')
     run(['c++', '-std=c++14', '-I' + str(app / 'sdk/include'),
          '-I' + str(work / 'source-sdk-build/sdk/generated'),
          '-I' + str(app / 'components/map-updater/include'),
          '-I' + str(work / 'source-sdk-build/components/map-updater/generated'), probe,
          work / 'source-sdk-build/components/map-updater/libmap_updater.a', '-o', work / 'metadata'])
     run([work / 'metadata'])
-    checks.append('PASS: named manifests, rebuilt runtime metadata and original package SDK identity agree')
-    change_field(manifest, 'component_sdk_min_version', '9.0.0')
-    error = run(['cmake', '--build', work / 'source-sdk-build'], success=False)
-    assert 'does not satisfy' in error
-    checks.append('PASS: incompatible SDK requirement rejected with an existing source SDK target')
+    added = app / 'components/map-updater/include/map_updater/new_header.hpp'
+    added.write_text('#pragma once\n')
+    run(['cmake', '--build', work / 'source-sdk-build', '-j4'])
+    assert field(build_manifest, 'component_source_id') != changed_id
+    added.unlink()
+    run(['cmake', '--build', work / 'source-sdk-build', '-j4'])
+    assert field(build_manifest, 'component_source_id') == changed_id
+    checks.append('PASS: source edits/additions/removals update identity; installed package records stay unchanged')
+
+    # A previously published SDK package cannot masquerade as the selected product SDK.
+    error = run(['cmake', '-S', app, '-B', work / 'wrong-sdk', '-DCMAKE_PREFIX_PATH=' + str(relocated),
+                 '-DROBOFRAME_USE_INSTALLED_COMPONENTS=ON'], success=False)
+    assert 'RoboframeSDK' in error
+    # Old component packages lack the build metadata needed to safely call the new SDK structure.
+    legacy = work / 'legacy-odom'
+    legacy.mkdir()
+    (legacy / 'OdomConfig.cmake').write_text('add_library(Odom::component INTERFACE IMPORTED)\n')
+    error = run(['cmake', '-S', app, '-B', work / 'legacy-build', '-DCMAKE_PREFIX_PATH=' + str(relocated),
+                 '-DROBOFRAME_USE_INSTALLED_COMPONENTS=ON', '-DROBOFRAME_SDK_SOURCE=SOURCE',
+                 '-DOdom_DIR=' + str(legacy)], success=False)
+    assert 'legacy package without build metadata' in error
+    # Reject an SDK-major mismatch even when a source SDK target already exists.
+    targets = next((relocated / 'lib/cmake/MapUpdater').glob('*Targets.cmake'))
+    original_targets = targets.read_text()
+    targets.write_text(original_targets.replace('ROBOFRAME_BUILT_WITH_SDK "' + sdk_version + '"',
+                                               'ROBOFRAME_BUILT_WITH_SDK "9.0.0"'))
+    error = run(['cmake', '-S', app, '-B', work / 'mismatch-build', '-DCMAKE_PREFIX_PATH=' + str(relocated),
+                 '-DROBOFRAME_USE_INSTALLED_COMPONENTS=ON', '-DROBOFRAME_SDK_SOURCE=SOURCE'], success=False)
+    assert 'is incompatible' in error
+    targets.write_text(original_targets)
+    checks.append('PASS: product SDK selection, legacy packages and incompatible component SDKs are rejected')
 
     # No component headers or integration private headers exist in this compile environment.
     public = work / 'public-only'
@@ -155,7 +185,7 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
 
     error = run(['cmake', '-S', app, '-B', work / 'bad-source', '-DCMAKE_PREFIX_PATH=' + str(relocated),
                  '-DROBOFRAME_USE_INSTALLED_COMPONENTS=ON',
-                 '-DROBOFRAME_ODOM_SOURCE=SOURCE'], success=False)
+                 '-DROBOFRAME_ODOM_SOURCE=SOURCE', '-DROBOFRAME_SDK_SOURCE=SOURCE'], success=False)
     assert 'SOURCE selected but component source is missing' in error
     checks.append('PASS: missing chosen source fails configuration; no silent package fallback')
 

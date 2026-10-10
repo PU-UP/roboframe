@@ -4,7 +4,7 @@
 
 namespace odom {
 roboframe::ComponentInfo GetComponentInfo() {
-    return {component_name, implementation_version, roboframe::sdk_version, contract_version};
+    return {component_name, source_id, roboframe::sdk_version};
 }
 PassthroughOdomComponent::PassthroughOdomComponent(Output output) : output_(std::move(output)) {
     if (!output_) throw std::invalid_argument("odometry output required");

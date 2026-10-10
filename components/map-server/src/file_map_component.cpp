@@ -15,7 +15,7 @@
 
 namespace map_server {
 roboframe::ComponentInfo GetComponentInfo() {
-    return {component_name, implementation_version, roboframe::sdk_version, contract_version};
+    return {component_name, source_id, roboframe::sdk_version};
 }
 namespace {
 std::uint64_t Hash(const std::string& metadata, const std::vector<std::uint8_t>& bytes) {

@@ -123,7 +123,8 @@ FileMapComponent 保留原 RFGRID1 格式与校验和，可读取旧地图；
 
 类型归属与 SDK 扩展规则见 [SDK 说明](../sdk/README.md)；所有延期项见 [统一待办](../TODO.md)。
 
-版本入口是 SDK 与各组件源码 VERSION；实现版本、契约和最低 SDK 均从这里读取。
-实际编译 SDK 自动记录在库中及安装清单，启动时输出到 stderr；不改变 IPC 协议。
+SDK 发布版本由 sdk/VERSION 管理；产品选择集中在 cmake/Dependencies.cmake。
+组件源码没有手写 VERSION；实际编译 SDK 和源码指纹自动写入库与安装清单，
+启动时输出到 stderr，不改变 IPC。integration 不再指定组件契约版本。
 组件依赖只存在于 integration 私有实现中；独立编译验证会实际移除组件与私有头文件，
 检查 interface 和 main 只靠 SDK 与公开入口能否通过编译。

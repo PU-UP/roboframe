@@ -18,15 +18,13 @@ int main() {
     static_assert(Compatible({1, 2, 0}, {1, 1, 9}), "compatible minor");
     static_assert(!Compatible({2, 0, 0}, {1, 0, 0}), "incompatible major");
     static_assert(!Compatible({1, 0, 0}, {1, 0, 1}), "missing patch");
-    ComponentInfo info{"test", "3.0.0", sdk_version, {1, 0, 0}};
-    CheckCompatibility(info, {1, 0, 0});
-    Reject([&] { CheckCompatibility(info, {2, 0, 0}); });
-    Reject([&] { CheckCompatibility(info, {1, 1, 0}); });
+    ComponentInfo info{"test", "source-fingerprint", sdk_version};
+    CheckCompatibility(info);
     info.built_with_sdk.major += 1;
-    Reject([&] { CheckCompatibility(info, {1, 0, 0}); });
+    Reject([&] { CheckCompatibility(info); });
     info.built_with_sdk = sdk_version;
     info.built_with_sdk.minor += 1;
-    Reject([&] { CheckCompatibility(info, {1, 0, 0}); });
+    Reject([&] { CheckCompatibility(info); });
 
     int count = 0;
     std::string last;

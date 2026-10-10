@@ -1,4 +1,4 @@
-# Roboframe SDK 1.3
+# Roboframe SDK 2.0
 interface、integration、component 共用的公开契约和小型基础设施。
 SDK 位于主目录的 sdk/，与 interfaces/、products/、components/ 并列；
 后两种复数目录是未来多产品布局，当前不为占位而搬动目录或创建空产品。
@@ -58,52 +58,44 @@ SDK 不强制 Integration 基类或通用 AddData。无真实配置的组件不�
 组件 tests 下的 main 可脱离框架运行，不维护两套相同示例。
 
 ## 版本与交付
-保持一套 SDK 源码、维护和发布体系，各产品可以固定不同版本，无需同时升级。
-产品固定 SDK 与组件包组合；不能在同一个可执行文件中随意混入不兼容的 SDK 头文件。
-版本固定清单和目标平台兼容矩阵的自动化见待办。
+版本维护只有两个入口：
+- SDK 维护者修改 sdk/VERSION，发布并标记兼容性；同 major 的后续版本必须兼容之前版本。
+- 产品维护者在 cmake/Dependencies.cmake 选择 SDK 的精确版本和组件清单。
 
-VERSION 是可由 CMake 直接读取的具名清单，发布维护者修改它，普通源码修改不必改号。
-不要在 CMakeLists、公开头文件或 .cpp 中再维护一份相同的组件发布声明。
-产品所需的最低契约仍由 integration 独立声明；这是消费者要求，
-不能自动取组件当前 contract_version，否则兼容检查会失去意义。
+component 开发者不维护 SDK 版本、组件发布数字或独立 contract_version。
+独立开发时通过 CMAKE_PREFIX_PATH 或 RoboframeSDK_DIR 使用产品指定的 SDK；
+根目录构建会检查源码 SDK 或安装包是否与产品选择一致。
 
-SDK 的源码 sdk/VERSION：
-~~~cmake
-set(ROBOFRAME_SDK_NAME "roboframe-sdk")
-set(ROBOFRAME_SDK_VERSION "1.3.0")
-~~~
+本次 SDK 2.0 删除 ComponentInfo 的独立契约字段，以自动 source_id 替代组件发布数字。
+这是公开结构变化，所以升级 major；旧组件开发包必须重建，不能与新 SDK 混用。
+产品配置阶段会拒绝缺少构建元数据的旧包。
 
-组件的源码 VERSION（以 map-updater 为例）：
-~~~cmake
-set(component_name "map-updater")
-set(component_version "2.0.1")
-set(component_contract_version "2.0.0")
-set(component_sdk_min_version "1.3.0")
-~~~
-- component_version：实现发布版本，兼容修复 patch、兼容功能 minor、不兼容 major。
-- component_contract_version：公开操作和 I/O 契约；纯算法内部迭代不需要变更。
-- component_sdk_min_version：最低 SDK 要求，还必须同 major；不是“实际编译 SDK”。
-- component_built_with_sdk：仅由构建生成，记录这份二进制实际使用的 SDK。
+组件身份在 CMake 构建时自动生成：
+- 名称：由组件构建目标产生。
+- source_id：对组件 src/、include/、cmake/ 与 CMakeLists.txt 内容计算 SHA256；
+  包含未提交改动，不依赖 Git，也不受所在绝对路径影响。
+- built_with_sdk：实际编译 SDK，由库的 GetComponentInfo() 返回。
+- 安装清单额外记录编译器与目标系统/架构，便于追溯，不冒充完整 ABI 检查。
 
-本次 SDK 1.3 增加共用 CMake 元数据生成工具，当前三个组件源码要求 SDK >=1.3，
-避免引用旧 SDK 中不存在的构建工具。组件实现版本仅升 patch，契约未变：
-MapUpdater 2.0，Odom/MapServer 1.0。SDK 版本不需要与这些版本数值相等。
-已有预编译包按自身要求与实际编译记录判断兼容，不因源码构建工具升级而改写其元数据。
+编辑、新增或删除上述源码会自动触发重新生成。源码指纹用于识别内容，
+不表达功能大小或兼容性；不包含测试、文档、外部依赖内容或所有编译选项。
+当前组件没有范围外算法源码；将来增加其他源码目录时需同步扩大指纹输入。
 
-CMake 自动生成 sdk_version.hpp 和各组件 <namespace>/version.hpp；
-组件 .cpp 的 GetComponentInfo() 返回编译进库的名称、实现、契约和 SDK 版本。
-启动日志明确打印这几项，stdout 仍只用于 IPC。SDK 更新后重编自动更新记录，
-无需手抄 SDK 版本到组件 VERSION。
+生成头文件在 build 中，只含元数据，业务源码仍在源目录。
+安装包 share/roboframe/<component>/VERSION 是自动生成的记录，不是开发者维护入口；
+SDK 的清单位于 share/roboframe/sdk/VERSION。
+组件头文件、库、CMake 导出和清单必须一起交付。产品通过源码目录、安装前缀或
+各组件的 <Package>_DIR 选择具体实现；不会自动下载或升级为“最新版”。
 
-安装前缀中的 share/roboframe/sdk/VERSION 保存 SDK 身份；
-share/roboframe/<component>/VERSION 保存组件声明，并追加实际 component_built_with_sdk。
-这些安装文件和生成头文件都是构建产物，不手工修改。发布组件时应一起交付头文件、
-库、CMake 导出与清单，不可单独替换其中一份。
+配置阶段检查产品 SDK 选择和组件编译 SDK；运行前再次检查宿主 SDK
+是否与组件的 built_with_sdk 同 major 且不低于它。检查只比较 SDK，
+不再要求 integration 手写三个组件契约版本。
+预编译组件保留原来的 SDK 与源码标识，宿主升级不会改写这些事实。
+启动日志输出名称、源码标识、编译 SDK；stdout 仍只用于 IPC。
 
-integration 在激活前核对库信息：宿主 SDK 必须 >= 组件编译 SDK 且同 major，
-组件契约必须 >= 产品声明的最低要求且同 major。不兼容抛异常、拒绝启动。
-运行检查不能挽救无法链接或调用的 C++ ABI 错误；目标架构、编译器和标准库仍须一致。
-当前组件为静态库。SDK 小版本号本身不保证所有 C++ 布局与编译选项兼容。
+SDK 统一维护，各产品可以固定不同发布版本。SDK 数字与源码指纹都不能自动证明
+组件私有接口或 C++ ABI 兼容；产品维护者仍须选择并验证配套组件包。
+不兼容 SDK 会明确失败，不自动重编第三方安装包。
 
 ~~~sh
 cmake -S sdk -B build-sdk
@@ -111,4 +103,3 @@ cmake --build build-sdk
 ctest --test-dir build-sdk --output-on-failure
 cmake --install build-sdk --prefix /tmp/roboframe-sdk
 ~~~
-安装包只有公开头文件、生成版本头和 CMake 导出；业务源码不写进 build。

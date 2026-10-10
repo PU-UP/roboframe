@@ -1,6 +1,0 @@
-# Component release identity. SDK compatibility: >= minimum, same major.
-set(component_name "map-server")
-set(component_version "1.0.1")
-set(component_contract_version "1.0.0")
-set(component_sdk_min_version "1.3.0")
-# Actual build SDK is generated into the installed VERSION, never entered manually.

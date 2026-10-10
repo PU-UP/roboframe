@@ -24,17 +24,14 @@ inline std::string ToString(Version version) {
 }
 struct ComponentInfo {
     const char* name;
-    const char* implementation_version;
+    const char* source_id;
     Version built_with_sdk;
-    Version contract;
 };
 // Keep the caller SDK version local even when linking a component built with another SDK.
-static inline void CheckCompatibility(const ComponentInfo& component, Version required_contract) {
+static inline void CheckCompatibility(const ComponentInfo& component) {
     if (!Compatible(sdk_version, component.built_with_sdk))
         throw std::runtime_error(std::string(component.name) + ": SDK mismatch: host=" +
             ToString(sdk_version) + ", component built with=" + ToString(component.built_with_sdk));
-    if (!Compatible(component.contract, required_contract))
-        throw std::runtime_error(std::string(component.name) + ": contract mismatch: available=" +
-            ToString(component.contract) + ", required=" + ToString(required_contract));
+
 }
 } // namespace roboframe

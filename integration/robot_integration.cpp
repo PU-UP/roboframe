@@ -5,10 +5,9 @@
 
 namespace roboframe {
 namespace {
-void CheckComponent(const ComponentInfo& info, Version required) {
-    CheckCompatibility(info, required);
-    ROBO_LOG_INFO("component") << info.name << " implementation=" << info.implementation_version
-        << " contract=" << ToString(info.contract) << " built_with_sdk=" << ToString(info.built_with_sdk);
+void CheckComponent(const ComponentInfo& info) {
+    CheckCompatibility(info);
+    ROBO_LOG_INFO("component") << info.name << " source=" << info.source_id << " built_with_sdk=" << ToString(info.built_with_sdk);
 }
 }
 RobotIntegration::RobotIntegration(std::string directory) : map_directory_(std::move(directory)) {}
@@ -38,9 +37,9 @@ RobotIntegration::Impl::Impl(MappingOptions options, std::string directory)
     : pose_buffer_({512, options.max_pose_gap_us}), odometry_([this](const TimedPose2D& pose) {
           RouteOdometry(pose);
       }), grid_(options.grid), store_(std::move(directory)) {
-    CheckComponent(odom::GetComponentInfo(), Version{1, 0, 0});
-    CheckComponent(map_updater::GetComponentInfo(), Version{2, 0, 0});
-    CheckComponent(map_server::GetComponentInfo(), Version{1, 0, 0});
+    CheckComponent(odom::GetComponentInfo());
+    CheckComponent(map_updater::GetComponentInfo());
+    CheckComponent(map_server::GetComponentInfo());
     // The only potentially failing activation comes first; later activations allocate no resources.
     store_.Activate();
     odometry_.Activate();
