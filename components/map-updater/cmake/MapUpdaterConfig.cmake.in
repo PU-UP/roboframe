@@ -1,6 +1,6 @@
 @PACKAGE_INIT@
 include(CMakeFindDependencyMacro)
 if(NOT TARGET Roboframe::sdk)
-    find_dependency(RoboframeSDK 1.2 CONFIG)
+    find_dependency(RoboframeSDK @component_sdk_min_version@ CONFIG)
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/MapUpdaterTargets.cmake")

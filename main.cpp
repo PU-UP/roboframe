@@ -1,4 +1,5 @@
 #include "interface/stdio_interface.hpp"
+#include "integration/robot_integration.hpp"
 #include <roboframe/log.hpp>
 #include <csignal>
 #include <iostream>
@@ -9,10 +10,11 @@ int main(int argc, char** argv) {
 #ifdef SIGPIPE
         std::signal(SIGPIPE, SIG_IGN);
 #endif
-        roboframe::StdioInterface interface(std::cin, std::cout, argv[1]);
+        roboframe::RobotIntegration integration(argv[1]);
+        roboframe::StdioInterface interface(std::cin, std::cout, integration);
         interface.Run();
     } catch (const std::exception& error) {
-        ROBO_LOG_ERROR("mapping-host") << error.what();
+        ROBO_LOG_ERROR("robot-runtime") << error.what();
         return 1;
     }
 }

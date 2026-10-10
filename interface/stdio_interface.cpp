@@ -1,4 +1,5 @@
 #include "interface/stdio_interface.hpp"
+#include "integration/robot_integration.hpp"
 #include <roboframe/mapping.hpp>
 #include <roboframe/scan2d.hpp>
 #include <iostream>
@@ -35,18 +36,18 @@ const char* MappingPhaseName(MappingPhase phase) {
     return "unknown";
 }
 }
-StdioInterface::StdioInterface(std::istream& input, std::ostream& output, std::string directory)
-    : input_(input), output_(output), map_directory_(std::move(directory)) {}
+StdioInterface::StdioInterface(std::istream& input, std::ostream& output, RobotIntegration& integration)
+    : input_(input), output_(output), integration_(integration) {}
 void StdioInterface::Send(const std::string& message) {
     output_ << message << std::endl;
     if (!output_) throw std::runtime_error("output channel closed");
 }
 std::string StdioInterface::Status() const {
-    const auto& s = integration_->mapping_status();
-    const auto map = integration_->map();
+    const auto& s = integration_.mapping_status();
+    const auto map = integration_.map();
     std::ostringstream out;
     out << "STATUS " << MappingPhaseName(s.phase) << ' ' << s.session << ' ' << s.received << ' '
-        << s.integrated << ' ' << s.ignored << ' ' << s.dropped << ' ' << integration_->pending()
+        << s.integrated << ' ' << s.ignored << ' ' << s.dropped << ' ' << integration_.pending()
         << ' ' << s.used_rays << ' ' << s.outside_rays << ' ' << (map ? map->revision : 0)
         << ' ' << s.drop_sync << ' ' << s.drop_queue << ' ' << s.drop_bounds << ' ' << s.drop_cancel;
     return out.str();
@@ -57,12 +58,11 @@ bool StdioInterface::Dispatch(const std::string& line) {
     if (!(input >> command)) throw std::invalid_argument("empty command");
     if (command == "QUIT") {
         End(input);
-        if (integration_) integration_->Shutdown();
+        integration_.Shutdown();
         Send("BYE");
         return false;
     }
     if (command == "CONFIG") {
-        if (integration_) throw std::logic_error("already configured");
         MappingOptions options;
         auto& spec = options.grid;
         spec.width = static_cast<std::uint32_t>(Unsigned(input, 4096));
@@ -72,13 +72,12 @@ bool StdioInterface::Dispatch(const std::string& line) {
         spec.origin_y = Number(input);
         options.max_pose_gap_us = static_cast<std::int64_t>(Unsigned(input, 10000000));
         End(input);
-        integration_ = std::make_unique<RobotIntegration>(options, map_directory_);
+        integration_.Configure(options);
     } else {
-        if (!integration_) throw std::logic_error("CONFIG required");
         if (command == "BEGIN") {
             const auto id = Unsigned(input);
             End(input);
-            integration_->StartMapping(id);
+            integration_.StartMapping(id);
         } else if (command == "ODOM") {
             TimedPose2D pose;
             pose.stamp_us = static_cast<std::int64_t>(Unsigned(input));
@@ -86,7 +85,7 @@ bool StdioInterface::Dispatch(const std::string& line) {
             pose.pose.y = Number(input);
             pose.pose.yaw = Number(input);
             End(input);
-            integration_->PushOdometry(pose);
+            integration_.PushOdometry(pose);
         } else if (command == "SCAN") {
             auto scan = std::make_shared<roboframe::Scan2D>();
             scan->stamp_us = static_cast<std::int64_t>(Unsigned(input));
@@ -97,18 +96,18 @@ bool StdioInterface::Dispatch(const std::string& line) {
                 scan->hits.push_back({x, y});
             }
             End(input);
-            integration_->PushScan(std::move(scan));
+            integration_.PushScan(std::move(scan));
         } else if (command == "SAVE" || command == "SNAPSHOT" || command == "LOAD") {
             std::string name;
             if (!(input >> name)) throw std::invalid_argument("expected map name");
             End(input);
-            if (command == "SAVE") integration_->SaveMap(name);
-            else if (command == "LOAD") integration_->LoadMap(name);
-            else integration_->SnapshotMap(name);
+            if (command == "SAVE") integration_.SaveMap(name);
+            else if (command == "LOAD") integration_.LoadMap(name);
+            else integration_.SnapshotMap(name);
         } else {
             End(input);
-            if (command == "FINISH") integration_->FinishMapping();
-            else if (command == "CANCEL") integration_->CancelMapping();
+            if (command == "FINISH") integration_.FinishMapping();
+            else if (command == "CANCEL") integration_.CancelMapping();
             else if (command == "STATUS") { Send(Status()); return true; }
             else throw std::invalid_argument("unknown command");
         }
@@ -141,7 +140,7 @@ void StdioInterface::Run() {
         oversized = false;
         if (!running) return;
     }
-    if (integration_) integration_->Shutdown();
+    integration_.Shutdown();
     if (!line.empty() || oversized) Send("ERROR incomplete line");
     if (input_.bad()) throw std::runtime_error("input channel failed");
 }

@@ -4,9 +4,11 @@ C++14 的 interface → integration → component 骨架。只有一个产品进
 history/ 和 build*/ 中旧数据、产物不参与构建，也不代表当前实现。
 
 ~~~text
-main.cpp
+main.cpp                               持有 integration，向 interface 注入引用
 interface/stdio_interface.*             IPC 编解码、输入校验、回执
-integration/robot_integration.*         产品装配、版本核对、生命周期
+integration/robot_integration.hpp       仅依赖 SDK 的产品公开入口
+integration/robot_integration_impl.hpp  私有组件装配与状态
+integration/robot_integration.cpp       入口实现、版本核对、生命周期
 integration/data_flow.cpp              数据接线、同步、分发
 integration/pose_buffer.*               产品内部的有界缓存与插值工具
 integration/mapping_flow.cpp            建图流程、地图操作
@@ -24,7 +26,11 @@ tests/                                 产品流程、IPC、独立交付验证
 当前无需额外 contract.hpp。SDK 的准入规则与未来产品分区见 [SDK 说明](sdk/README.md)。
 未来 DRComponent 可放在 odom/dr_component.hpp 和 src/dr_component.cpp。
 多个实现真正共享协议时，再提取 odom 自己的契约。
-具体实现由 integration 静态装配，没有动态插件或实现注册框架。
+具体实现由 integration 私有实现静态装配，没有动态插件或实现注册框架。
+main 创建并持有 RobotIntegration；StdioInterface 只引用公开入口。
+CONFIG 调用 Configure 后才创建并激活组件；失败不留下半配置的对象，可以重试。
+成功后拒绝重复配置。QUIT/EOF 关闭组件；异常退出由 integration 析构兜底。
+组件依赖为 PRIVATE，不再通过 integration 向 interface 传播组件头文件。
 
 Odom 是能力；PassthroughOdomComponent 校验并透传已有 odom，不估计或修正轨迹。
 Map updater 更新占据地图，Map server 保存/读取地图；它们不决定何时开始建图。
@@ -74,11 +80,12 @@ BUILD_TESTING=OFF 不要求 Python，不编译测试 main。
 VERSION 由维护者在发布时调整，日常改源码不必每次改号。
 CMake 监听 VERSION 变化，自动更新编译元数据；源码变动仍由正常依赖追踪。
 SDK 升级不要求机械修改组件 VERSION；组件编译时自动记录 SDK 版本。
-公开语义变化时调整头文件的 contract_version，重大不兼容改 major。
+公开语义变化时调整 VERSION 的 component_contract_version，重大不兼容改 major。
+SDK/组件 VERSION 都写明名称与版本；组件还声明最低 SDK，实际编译 SDK 自动写入安装清单。
 启动前核对 SDK 和契约，不兼容拒绝启动。版本号不能自动证明 C++ ABI 兼容。
-当前产品要求 SDK 1.2、MapUpdater 2.x；Odom、MapServer 契约仍为 1.x。
+当前源码使用 SDK 1.3 的元数据构建工具；MapUpdater 契约 2.x，Odom/MapServer 契约 1.x。
 [SDK 规则](sdk/README.md)。
 
 当前串行调用、静态链接；没有增加 BT、线程池、动态插件或 ARM 工具链。
 
-后续接口隔离、多产品布局、BT、异步数据、ROS/DDS、ARM 和工具演进统一记录在 [TODO.md](TODO.md)。
+多产品布局、BT、异步数据、ROS/DDS、ARM 和工具演进统一记录在 [TODO.md](TODO.md)。

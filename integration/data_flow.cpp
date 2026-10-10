@@ -1,16 +1,16 @@
-#include "integration/robot_integration.hpp"
+#include "integration/robot_integration_impl.hpp"
 #include <stdexcept>
 
 namespace roboframe {
-void RobotIntegration::PushOdometry(const TimedPose2D& pose) {
+void RobotIntegration::Impl::PushOdometry(const TimedPose2D& pose) {
     RequireActive();
     odometry_.PushOdometry(pose);
 }
-void RobotIntegration::RouteOdometry(const TimedPose2D& pose) {
+void RobotIntegration::Impl::RouteOdometry(const TimedPose2D& pose) {
     pose_buffer_.PushOdometry(pose);
     if (status_.phase == MappingPhase::mapping) Drain(false);
 }
-void RobotIntegration::PushScan(roboframe::Scan2DPtr scan) {
+void RobotIntegration::Impl::PushScan(roboframe::Scan2DPtr scan) {
     RequireActive();
     if (!scan) throw std::invalid_argument("null scan");
     map_updater::ValidateScan(*scan);
@@ -26,7 +26,7 @@ void RobotIntegration::PushScan(roboframe::Scan2DPtr scan) {
     pending_.push_back(std::move(scan));
     Drain(false);
 }
-void RobotIntegration::Drain(bool finishing) {
+void RobotIntegration::Impl::Drain(bool finishing) {
     while (!pending_.empty()) {
         TimedPose2D pose;
         const auto match = pose_buffer_.At(pending_.front()->stamp_us, pose);

@@ -4,9 +4,8 @@
 #include <stdexcept>
 
 namespace map_updater {
-static_assert(roboframe::Compatible(roboframe::sdk_version, {1, 2, 0}), "MapUpdater requires SDK >=1.2, same major");
 roboframe::ComponentInfo GetComponentInfo() {
-    return {"map-updater", ROBOFRAME_COMPONENT_VERSION, roboframe::sdk_version, contract_version};
+    return {component_name, implementation_version, roboframe::sdk_version, contract_version};
 }
 void ValidateScan(const roboframe::Scan2D& scan) {
     roboframe::ValidateScan2D(scan);

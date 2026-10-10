@@ -1,4 +1,4 @@
-# Roboframe SDK 1.2
+# Roboframe SDK 1.3
 interface、integration、component 共用的公开契约和小型基础设施。
 SDK 位于主目录的 sdk/，与 interfaces/、products/、components/ 并列；
 后两种复数目录是未来多产品布局，当前不为占位而搬动目录或创建空产品。
@@ -19,9 +19,10 @@ SDK 的 C++ 对象不是线协议，不能直接把对象内存作为 IPC 数据
 | 传输解析、协议编码和传输资源 | interface |
 
 integration 装配具体组件，所以其实现依赖组件的公开接口是正常的；
-interface 不应依赖组件数据类型。当前已经统一边界数据，
-但 integration 公开头文件仍传递包含具体组件头文件，这项编译依赖隔离在
-[统一待办](../TODO.md) 中延期处理，不能把本次迁移称为完全解耦。
+interface 不依赖组件数据类型或头文件。integration 公开入口只引用 SDK；
+具体组件和 PoseBuffer 在私有 robot_integration_impl.hpp 中，CMake 组件依赖为 PRIVATE。
+main 拥有 integration，StdioInterface 只借用引用。interface 仍依赖具体产品的公开操作，
+本次没有引入适用于所有产品的抽象接口。
 
 ## SDK 准入规则
 1. 新类型必须有实际的公开边界或独立消费者；不按未来模块清单预建类型。
@@ -61,15 +62,43 @@ SDK 不强制 Integration 基类或通用 AddData。无真实配置的组件不�
 产品固定 SDK 与组件包组合；不能在同一个可执行文件中随意混入不兼容的 SDK 头文件。
 版本固定清单和目标平台兼容矩阵的自动化见待办。
 
-VERSION 由发布维护者调整，普通源码修改无需改号。
-SDK/组件/主框架实现版本分别管理：兼容修复 patch，兼容扩展 minor，破坏兼容 major。
-组件 contract_version 在公开头文件中，描述公开接口与 I/O 语义；算法内部改变无需修改它。
-CMake 从 sdk/VERSION 生成 sdk_version.hpp；组件 .cpp 返回编译时 SDK 版本。
-SDK 更新后重编会更新这个记录，不要求开发者抄写 SDK 版本；预编译组件仍保留原值。
+VERSION 是可由 CMake 直接读取的具名清单，发布维护者修改它，普通源码修改不必改号。
+不要在 CMakeLists、公开头文件或 .cpp 中再维护一份相同的组件发布声明。
+产品所需的最低契约仍由 integration 独立声明；这是消费者要求，
+不能自动取组件当前 contract_version，否则兼容检查会失去意义。
 
-本次 SDK 1.2 增加 Scan2D 和建图公开数据。MapUpdater 的入参类型迁移属于源码接口变化，
-其实现版本与契约升为 2.0；当前产品要求 SDK >=1.2、MapUpdater >=2.0，各自同 major。
-Odom、MapServer 契约仍为 1.0，独立构建最低支持 SDK 1.1。
+SDK 的源码 sdk/VERSION：
+~~~cmake
+set(ROBOFRAME_SDK_NAME "roboframe-sdk")
+set(ROBOFRAME_SDK_VERSION "1.3.0")
+~~~
+
+组件的源码 VERSION（以 map-updater 为例）：
+~~~cmake
+set(component_name "map-updater")
+set(component_version "2.0.1")
+set(component_contract_version "2.0.0")
+set(component_sdk_min_version "1.3.0")
+~~~
+- component_version：实现发布版本，兼容修复 patch、兼容功能 minor、不兼容 major。
+- component_contract_version：公开操作和 I/O 契约；纯算法内部迭代不需要变更。
+- component_sdk_min_version：最低 SDK 要求，还必须同 major；不是“实际编译 SDK”。
+- component_built_with_sdk：仅由构建生成，记录这份二进制实际使用的 SDK。
+
+本次 SDK 1.3 增加共用 CMake 元数据生成工具，当前三个组件源码要求 SDK >=1.3，
+避免引用旧 SDK 中不存在的构建工具。组件实现版本仅升 patch，契约未变：
+MapUpdater 2.0，Odom/MapServer 1.0。SDK 版本不需要与这些版本数值相等。
+已有预编译包按自身要求与实际编译记录判断兼容，不因源码构建工具升级而改写其元数据。
+
+CMake 自动生成 sdk_version.hpp 和各组件 <namespace>/version.hpp；
+组件 .cpp 的 GetComponentInfo() 返回编译进库的名称、实现、契约和 SDK 版本。
+启动日志明确打印这几项，stdout 仍只用于 IPC。SDK 更新后重编自动更新记录，
+无需手抄 SDK 版本到组件 VERSION。
+
+安装前缀中的 share/roboframe/sdk/VERSION 保存 SDK 身份；
+share/roboframe/<component>/VERSION 保存组件声明，并追加实际 component_built_with_sdk。
+这些安装文件和生成头文件都是构建产物，不手工修改。发布组件时应一起交付头文件、
+库、CMake 导出与清单，不可单独替换其中一份。
 
 integration 在激活前核对库信息：宿主 SDK 必须 >= 组件编译 SDK 且同 major，
 组件契约必须 >= 产品声明的最低要求且同 major。不兼容抛异常、拒绝启动。

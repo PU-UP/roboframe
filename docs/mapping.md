@@ -18,7 +18,9 @@ flowchart LR
 | 文件 | 职责 |
 |---|---|
 | interface/stdio_interface.hpp | 传输对象；解析、校验、编码回执 |
-| integration/robot_integration.hpp | 产品公开接口、组件所有权、建图会话状态 |
+| main.cpp | 创建并持有 integration，把引用交给 stdio |
+| integration/robot_integration.hpp | 产品公开接口，仅依赖 SDK |
+| integration/robot_integration_impl.hpp | 私有组件所有权、接线和建图会话状态 |
 | integration/robot_integration.cpp | 构造、兼容性检查、启停 |
 | integration/data_flow.cpp | 转发数据、等待同步、调用地图更新 |
 | integration/pose_buffer.hpp | integration 私有缓存工具，没有组件生命周期 |
@@ -35,7 +37,8 @@ Continuous odom 不使用 Action 状态。建图的 idle/mapping/ready 属于产
 而复用 SDK 和三个能力组件。其他业务不必重启 integration。
 
 ## 各阶段
-1. 进程输出 READY roboframe-v1，CONFIG 后构造并激活组件。
+1. main 先创建未配置的 integration 并注入 stdio；进程输出 READY roboframe-v1。
+   CONFIG 调用 Configure，成功才提交组件装配；参数或资源初始化失败允许重试，成功后不允许重复配置。
 2. BEGIN id 调用 StartMapping，清空本次占据图和待匹配 scan，保留持续 odom 数据流。
 3. ODOM 经透传组件输出到 PoseBuffer；SCAN 在 integration 排队（最多 64）。
    精确时间戳优先；否则只在合法时间间隔内插值，绝不挑最新 pose 或外推。
@@ -43,7 +46,8 @@ Continuous odom 不使用 Action 状态。建图的 idle/mapping/ready 属于产
 5. FINISH 处理剩余队列，未配对的计为丢弃；非空地图形成独立快照，状态 ready。
 6. SAVE name 将冻结快照交给 FileMapComponent。后续 odom 仍流动，scan 不再改图。
 7. LOAD name 可在未建图时加载地图；BEGIN 新 id 可在同一进程再次建图。
-8. CANCEL 结束本次会话；QUIT/EOF 停用组件，不隐式结束并保存地图。
+8. CANCEL 结束本次会话；QUIT/EOF 调用 integration 关闭组件，不隐式结束并保存地图。
+   main 持有 integration；异常退出或忘记显式关闭时，析构负责清理。
 
 ## IPC
 每行不超过 65536 字节，stdout 只用于协议，stderr 为日志。
@@ -118,3 +122,8 @@ FileMapComponent 保留原 RFGRID1 格式与校验和，可读取旧地图；
 真实异步图像/模型融合不在本次实现范围。
 
 类型归属与 SDK 扩展规则见 [SDK 说明](../sdk/README.md)；所有延期项见 [统一待办](../TODO.md)。
+
+版本入口是 SDK 与各组件源码 VERSION；实现版本、契约和最低 SDK 均从这里读取。
+实际编译 SDK 自动记录在库中及安装清单，启动时输出到 stderr；不改变 IPC 协议。
+组件依赖只存在于 integration 私有实现中；独立编译验证会实际移除组件与私有头文件，
+检查 interface 和 main 只靠 SDK 与公开入口能否通过编译。

@@ -3,12 +3,11 @@
 #include <roboframe/geometry2d.hpp>
 #include <roboframe/scan2d.hpp>
 #include <roboframe/grid.hpp>
-#include <roboframe/version.hpp>
+#include <map_updater/version.hpp>
 #include <memory>
 #include <vector>
 
 namespace map_updater {
-constexpr roboframe::Version contract_version{2, 0, 0};
 roboframe::ComponentInfo GetComponentInfo();
 // These implementation limits are deliberately separate from the shared scan contract.
 void ValidateScan(const roboframe::Scan2D& scan);

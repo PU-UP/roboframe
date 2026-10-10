@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <unistd.h>
+#include <sys/stat.h>
 void Check(bool ok) { if (!ok) throw std::runtime_error("integration check failed"); }
 template<class F> void Reject(F f) {
     bool caught = false; try { f(); } catch (const std::exception&) { caught = true; } Check(caught);
@@ -13,7 +14,21 @@ roboframe::Scan2DPtr Scan(std::int64_t t) {
 int main() {
     char directory[] = "/tmp/roboframe-mapping-XXXXXX";
     Check(::mkdtemp(directory) != nullptr);
-    roboframe::RobotIntegration integration({{20, 20, 1, -5, -5}, 100}, directory);
+    const auto late_directory = std::string(directory) + "/late";
+    {
+        roboframe::RobotIntegration retry(late_directory);
+        Reject([&] { retry.Configure({{20, 20, 1, -5, -5}, 100}); });
+        Check(::mkdir(late_directory.c_str(), 0700) == 0);
+        retry.Configure({{20, 20, 1, -5, -5}, 100});
+        retry.StartMapping(1);
+    } // Product ownership stops components even without explicit Shutdown.
+    Check(::rmdir(late_directory.c_str()) == 0);
+    roboframe::RobotIntegration integration(directory);
+    Reject([&] { integration.StartMapping(1); });
+    integration.Shutdown(); // No components exist before configuration.
+    Reject([&] { integration.Configure({{0, 20, 1, -5, -5}, 100}); });
+    integration.Configure({{20, 20, 1, -5, -5}, 100});
+    Reject([&] { integration.Configure({{20, 20, 1, -5, -5}, 100}); });
     integration.PushScan(Scan(0)); // Data outside a session is ignored, not retroactively mapped.
     Check(integration.mapping_status().ignored == 1);
     integration.PushOdometry({0, {}});

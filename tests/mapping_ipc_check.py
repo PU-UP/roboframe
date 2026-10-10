@@ -42,6 +42,16 @@ class MappingIPC(unittest.TestCase):
             self.assertIn('OK SAVE', lines)
             self.assertEqual(len(list(pathlib.Path(directory).iterdir())), 1)
 
+    def test_configuration_retry_and_duplicate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            lines = self.run_session('STATUS\nCONFIG 0 20 1 -5 -5 100\n' + CONFIG +
+                'BEGIN 1\n' + CONFIG + 'STATUS\nQUIT\n', directory)
+            self.assertEqual(sum(line.startswith('ERROR ') for line in lines), 3)
+            self.assertEqual(lines.count('OK CONFIG'), 1)
+            self.assertIn('STATUS mapping 1 0 0 0 0 0 0 0 0 0 0 0 0', lines)
+            self.assertEqual(list(pathlib.Path(directory).iterdir()), [])
+            self.assertEqual(self.run_session('QUIT\n', directory), ['READY roboframe-v1', 'BYE'])
+
     def test_eof_is_not_finish_or_save(self):
         with tempfile.TemporaryDirectory() as directory:
             lines = self.run_session(CONFIG + 'BEGIN 1\nODOM 0 0 0 0\nSCAN 0 1 2 0\nSAVE partial', directory)

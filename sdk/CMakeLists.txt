@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
-file(STRINGS VERSION ROBOFRAME_SDK_VERSION LIMIT_COUNT 1)
+include("${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
 project(RoboframeSDK VERSION ${ROBOFRAME_SDK_VERSION} LANGUAGES CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 find_package(Threads REQUIRED)
+include(cmake/RoboframeComponentMetadata.cmake)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(CTest)
 endif()
@@ -12,7 +13,9 @@ endif()
 configure_file(cmake/sdk_version.hpp.in generated/roboframe/sdk_version.hpp @ONLY)
 add_library(roboframe_sdk INTERFACE)
 add_library(Roboframe::sdk ALIAS roboframe_sdk)
-set_target_properties(roboframe_sdk PROPERTIES EXPORT_NAME sdk)
+set_target_properties(roboframe_sdk PROPERTIES EXPORT_NAME sdk
+    ROBOFRAME_SDK_VERSION "${PROJECT_VERSION}"
+    EXPORT_PROPERTIES ROBOFRAME_SDK_VERSION)
 target_compile_features(roboframe_sdk INTERFACE cxx_std_14)
 target_link_libraries(roboframe_sdk INTERFACE Threads::Threads)
 target_include_directories(roboframe_sdk INTERFACE
@@ -43,3 +46,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/generated/roboframe/sdk_version.hpp
 install(EXPORT RoboframeSDKTargets NAMESPACE Roboframe:: DESTINATION ${package_dir})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/RoboframeSDKConfig.cmake
     ${CMAKE_CURRENT_BINARY_DIR}/RoboframeSDKConfigVersion.cmake DESTINATION ${package_dir})
+
+install(FILES VERSION DESTINATION ${CMAKE_INSTALL_DATADIR}/roboframe/sdk)
+install(FILES cmake/RoboframeComponentMetadata.cmake cmake/component_version.hpp.in
+    DESTINATION ${package_dir})

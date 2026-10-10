@@ -1,11 +1,10 @@
 #pragma once
 #include <roboframe/component.hpp>
 #include <roboframe/geometry2d.hpp>
-#include <roboframe/version.hpp>
+#include <odom/version.hpp>
 #include <functional>
 
 namespace odom {
-constexpr roboframe::Version contract_version{1, 0, 0};
 roboframe::ComponentInfo GetComponentInfo();
 // Input/output: acquisition timestamp in microseconds, T_odom_base in metres/radians.
 // Output is synchronous; its reference lasts only for this call. Serialize all calls.

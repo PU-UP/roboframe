@@ -1,11 +1,10 @@
 #pragma once
 #include <roboframe/component.hpp>
 #include <roboframe/grid.hpp>
-#include <roboframe/version.hpp>
+#include <map_server/version.hpp>
 #include <string>
 
 namespace map_server {
-constexpr roboframe::Version contract_version{1, 0, 0};
 roboframe::ComponentInfo GetComponentInfo();
 // Linux storage implementation. Root must already exist. Names are basenames, never paths.
 // Save publishes one complete file and never overwrites an existing map.

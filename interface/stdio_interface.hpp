@@ -1,14 +1,13 @@
 #pragma once
-#include "integration/robot_integration.hpp"
 #include <iosfwd>
-#include <memory>
 #include <string>
 
 namespace roboframe {
+class RobotIntegration;
 // Line-oriented IPC; decoding and bounded input only, no mapping algorithm or product state.
 class StdioInterface {
 public:
-    StdioInterface(std::istream& input, std::ostream& output, std::string map_directory);
+    StdioInterface(std::istream& input, std::ostream& output, RobotIntegration& integration);
     void Run();
 private:
     bool Dispatch(const std::string& line);
@@ -16,7 +15,6 @@ private:
     std::string Status() const;
     std::istream& input_;
     std::ostream& output_;
-    std::string map_directory_;
-    std::unique_ptr<RobotIntegration> integration_;
+    RobotIntegration& integration_; // Borrowed; main owns the integration lifetime.
 };
 } // namespace roboframe

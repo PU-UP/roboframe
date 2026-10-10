@@ -14,9 +14,8 @@
 #include <unistd.h>
 
 namespace map_server {
-static_assert(roboframe::Compatible(roboframe::sdk_version, {1, 1, 0}), "MapServer requires SDK >=1.1, same major");
 roboframe::ComponentInfo GetComponentInfo() {
-    return {"map-server", ROBOFRAME_COMPONENT_VERSION, roboframe::sdk_version, contract_version};
+    return {component_name, implementation_version, roboframe::sdk_version, contract_version};
 }
 namespace {
 std::uint64_t Hash(const std::string& metadata, const std::vector<std::uint8_t>& bytes) {

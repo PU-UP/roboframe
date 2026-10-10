@@ -3,9 +3,8 @@
 #include <utility>
 
 namespace odom {
-static_assert(roboframe::Compatible(roboframe::sdk_version, {1, 1, 0}), "Odom requires SDK >=1.1, same major");
 roboframe::ComponentInfo GetComponentInfo() {
-    return {"odom", ROBOFRAME_COMPONENT_VERSION, roboframe::sdk_version, contract_version};
+    return {component_name, implementation_version, roboframe::sdk_version, contract_version};
 }
 PassthroughOdomComponent::PassthroughOdomComponent(Output output) : output_(std::move(output)) {
     if (!output_) throw std::invalid_argument("odometry output required");

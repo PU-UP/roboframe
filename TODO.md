@@ -1,12 +1,13 @@
 # Roboframe 统一待办
 这里汇总已讨论但尚未实施的架构事项。后续待办更新此文件，不再分散另建清单。
-本次已完成：interface 边界数据迁入 SDK、SDK 准入与版本规则、组件独立安装和混合构建。
+已完成：interface 边界数据迁入 SDK、SDK 准入规则、组件独立安装和混合构建。
+已完成接口隔离：integration 公开头文件隐藏装配；组件依赖 PRIVATE；main 持有 integration，
+stdio 借用公开入口。已完成具名 VERSION、自动生成契约与安装编译记录。
+验证包括移除组件/私有头文件后的 interface 编译，以及配置失败重试。
 下面的目录与接口方向是约定，不是已实现功能；按实际需求逐项完成，不同时引入整套框架。
 
 | 顺序/触发条件 | 待办与边界 | 验收条件 |
 |---|---|---|
-| 下一轮接口隔离 | 隐藏 integration 公开头文件中的具体组件装配。优先公开入口与实现分离，按需要使用前置声明或 PImpl，不建立多层抽象体系。 | interface 编译只需要 SDK 与 integration 公开入口，不需要任何组件头文件；组件仍在 integration 实现中装配。 |
-| 同一轮接口隔离 | StdioInterface 不再创建 RobotIntegration。由产品 main 装配 integration 并交给 interface；明确启动、关闭和对象生存期。 | 同一 integration 可换传输入口；配置语义与当前失败清理行为不丢失。 |
 | 出现第二个真实产品 | 根目录保持 sdk/、components/，引入 interfaces/<transport>/ 与 products/<product>/xxx_integration。先在同一主仓库维护多个产品；独立发布或团队权限确有需要时再分产品 integration 仓库。传输适配可复用，产品装配入口归产品，不把 interface 与某组件绑定。 | 参数差异用配置；业务接线/流程差异用各产品 integration；两个产品独立构建运行且复用同一 SDK 发布体系。 |
 | 工作流复杂度增加 | 在 integration 引入 BT；状态机只保留确有必要的业务状态。组件 lifecycle 与可取消任务状态分开；planner 等有限任务按需使用 Action，odom 等持续流不强制 Action。 | 同一产品进程可切换和复用多项业务；无两份互相竞争的任务真相。 |
 | 出现第二种实现/新能力 | 讨论并稳定 odom、global localization（含 SLAM 能力）、planner、controller、map updater、map server、inference、perception fusion、recovery 的职责；不是要求每个产品实例化全部模块。建图开始/结束仍是流程。DR/VIO/LIO/融合实现采用具名类和文件；非预定义能力也可按普通组件接入。 | 实际替换至少一对实现，输出语义和控制契约明确；传感器输入允许不同，不把所有算法塞进同一种输入。 |
