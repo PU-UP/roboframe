@@ -83,6 +83,11 @@ used_rays / outside_rays / map_revision / drop_sync / drop_queue / drop_bounds /
 map_revision 指基准地图。RESOURCES 另行报告实时更新、块复制量及 planner 的读取/替换计数，
 避免后台更新改写已完成建图的成功/丢帧计数。WAIT_PLANNER 发布最新版本并等待读取结束，用于验收。
 
+## 后续规划用的参考地图
+新增 `--dataset corrected`，使用发布者配套校正日志，仍经过同一 IPC/component 链路。
+来源、下载指纹、坐标语义和规划使用边界见 [Intel 数据说明](../data/intel-lab/README.md)。
+原始模式及历史结果保留；下节描述的是 raw 模式，corrected 模式不是原始 odom 或实测真值。
+
 ## 原始数据与地图验证
 使用 history/2026-10-09-full-prototype/data/intel-lab/intel.log.gz。
 SHA256：449a9813e9709b6fd053ba0d006ea69c5f4485ba08dd021448e653e3af2e6ff9。
@@ -121,6 +126,47 @@ python3 tools/mapping/replay.py --scans 0 --finish-after 12267 --output build-pr
 ~~~
 输出目录不可覆盖。replay.html、final.png、summary.json、输入 gzip 和回执 JSONL
 保留真实运行结果；summary 的 passed 只表示上述业务链路断言通过，不代表定位精度。
+
+## 2026-10-10：与 history 的同条件对照
+
+之前把 history 的短片段图与当前全量图直接比较，不足以判断重构是否造成几何退化。
+本次使用未修改的归档 intel_replay 和其原有 BT 动态库重新运行，未修改位姿、外参或 scan 角度。
+
+| 对照条件 | history | 当前 |
+|---|---|---|
+| 短片段 | 输入 600 帧，第 480 帧结束，建图约 94.0 秒 | 完全相同 |
+| 长片段 | 输入 13,631 帧，第 12,267 帧结束，建图约 2,423.0 秒 | 完全相同 |
+| 原始占据地图 | 导出的 intel.rfmap，不膨胀 | final.rfgrid，不膨胀 |
+
+证据：
+- 13,631 帧经新旧 Python 解析器得到的时间戳、位姿、全部点坐标逐项完全相同。
+  两者量程下限写法稍有差别，但在该数据中没有造成任何输入差异。
+- 重跑旧版短片段的 intel.rfmap 与归档文件逐字节一致，确认历史基线可复现。
+- 同条件短片段的新旧图轮廓一致；已知区域交并比 98.05%。
+- **旧版运行长片段同样出现全局扭曲、重叠**；新旧长片段已知区域交并比 98.59%。
+  该指标衡量覆盖差异，不衡量地图几何精度。
+- 旧页面 map.svg 来自额外做过 0.2 m 膨胀的导航地图；当前 PNG 是未膨胀占据图。
+  对照页使用原始占据图，也单独提供旧版膨胀图，避免比较不同图层。
+- 旧版 insert_rays 用本帧射线直接覆盖格值；当前 OccupancyMapComponent 跨帧累积证据，
+  因此墙线、噪点、占据格数量并不完全相同。这不解释两者共有的整体错位。
+
+结论：本次显示差异主要来自建图区间和显示图层，未发现重构引入 scan/位姿解码变化。
+这不代表原始位姿就是真值，也不证明两版共有的角度/标定假设正确。
+此前单帧投影测试只能验证给定约定下的计算；不应将其写成实际传感器标定或全局地图验收。
+若继续解决长片段几何问题，应独立检查原始位姿与重复观测的一致性，以及采集设备的角度/标定信息；
+不能为了接近短片段外观而修改外参、隐藏后续帧或改变 odom。
+
+本地对照结果：build-product/geometry-compare/index.html；机器数据 comparison.json、parser-check.json。
+运行产物保留在 build-product，不参与源码构建。
+
+复现回放（输出目录需使用新名字，避免覆盖结果）：
+~~~sh
+python3 tools/mapping/replay.py --scans 600 --finish-after 480 --output build-product/history-prefix-compare
+LD_LIBRARY_PATH="$PWD/history/2026-10-09-full-prototype/build/_deps/roboframe_bt-build" \
+python3 history/2026-10-09-full-prototype/examples/intel_demo.py \
+  --scans 13631 --finish-after 12267 --output build-product/history-full-compare
+~~~
+归档动态库只用于这次对照，不是当前框架的新依赖。
 
 ## 边界与兼容
 C++14、静态库；integration/写图串行，planner 单独读取。没有 BT、线程池或插件注册器。

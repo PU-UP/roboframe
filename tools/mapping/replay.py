@@ -16,6 +16,15 @@ import zlib
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / 'history/2026-10-09-full-prototype/data/intel-lab/intel.log.gz'
 SHA256 = '449a9813e9709b6fd053ba0d006ea69c5f4485ba08dd021448e653e3af2e6ff9'
+DATASETS = {
+    'raw': dict(path=DATA, sha256=SHA256,
+                pose_source='FLASER associated raw odometry; unchanged',
+                label='Intel raw-log / original odometry', frame='recorded_odom'),
+    'corrected': dict(path=ROOT / 'data/intel-lab/intel.gfs.log.gz',
+                      sha256='152d4db32761a71ac4a557d2bd383d4ba054864c290b799df92096ba34b70dea',
+                      pose_source='Publisher corrected FLASER poses; offline reference, not online SLAM or ground truth',
+                      label='Intel corrected-log / publisher corrected poses', frame='corrected_reference'),
+}
 
 
 def timestamp(text):
@@ -58,13 +67,16 @@ def parse(line, number):
                 filtered=180 - len(hits), pose=odom, line=number)
 
 
-def load(path):
-    if hashlib.sha256(path.read_bytes()).hexdigest() != SHA256:
+def load(path, dataset='raw'):
+    if hashlib.sha256(path.read_bytes()).hexdigest() != DATASETS[dataset]['sha256']:
         raise ValueError('Intel dataset checksum mismatch')
     records, previous = [], {}
     backwards = dict(odom=0, scan=0)
     with gzip.open(path, 'rt', encoding='ascii') as stream:
         for number, line in enumerate(stream, 1):
+            # Corrected poses belong to each FLASER; its separate ODOM stream is not an input.
+            if dataset == 'corrected' and not line.startswith('FLASER '):
+                continue
             record = parse(line, number)
             if record is None:
                 continue
@@ -171,11 +183,12 @@ class Host:
 
 
 def run(args):
-    records, backwards = load(args.data)
+    dataset = DATASETS[args.dataset]
+    records, backwards = load(args.data, args.dataset)
     all_scans = [r for r in records if r['kind'] == 'scan']
-    count = len(all_scans) if args.scans == 0 else args.scans
+    count = min(3000, len(all_scans)) if args.scans is None else (len(all_scans) if args.scans == 0 else args.scans)
     if count < 2 or count > len(all_scans):
-        raise ValueError('scans must be 2..13631, or 0 for all')
+        raise ValueError(f'scans must be 2..{len(all_scans)}, or 0 for all')
     finish = args.finish_after if args.finish_after is not None else count * 4 // 5
     if not 1 <= finish < count:
         raise ValueError('finish-after must be before the last selected scan')
@@ -289,9 +302,11 @@ def run(args):
         reload_host.close()
     if original != (args.output / 'reloaded.rfgrid').read_bytes():
         raise RuntimeError('map did not survive process restart')
-    summary = dict(passed=True, dataset_sha256=SHA256, total_dataset_scans=len(all_scans),
+    summary = dict(passed=True, dataset=args.dataset, dataset_label=dataset['label'],
+                   dataset_sha256=dataset['sha256'], reference_frame=dataset['frame'],
+                   total_dataset_scans=len(all_scans),
                    replayed_scans=count, finish_after=finish, replayed_odom=len(odometry),
-                   pose_source='FLASER associated raw odometry; unchanged',
+                   pose_source=dataset['pose_source'],
                    max_odom_gap_ms=args.max_odom_gap_ms, reordered_records=backwards, before=before, after=after,
                    saved_map_sha256=hashlib.sha256(original).hexdigest(),
                    frozen_equal=True, reloaded_equal=True, resources=resources,
@@ -313,13 +328,18 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--data', type=Path, default=DATA)
+    parser.add_argument('--dataset', choices=tuple(DATASETS), default='raw',
+                        help='raw odometry or publisher-corrected offline reference')
+    parser.add_argument('--data', type=Path, help='override file path; selected dataset checksum still enforced')
     parser.add_argument('--binary', type=Path, default=ROOT / 'build-product/robot_runtime')
     parser.add_argument('--output', type=Path, default=ROOT / 'build-product/result')
-    parser.add_argument('--scans', type=int, default=3000, help='0 = full dataset')
+    parser.add_argument('--scans', type=int, help='default: up to 3000; 0 = full dataset')
     parser.add_argument('--finish-after', type=int)
     parser.add_argument('--max-odom-gap-ms', type=int, default=250)
     args = parser.parse_args()
+    args.data = args.data or DATASETS[args.dataset]['path']
+    if not args.data.is_file():
+        parser.error('dataset file missing; see data/intel-lab/README.md')
     if not args.binary.is_file():
         parser.error('build robot_runtime first')
     if args.output.exists():

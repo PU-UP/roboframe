@@ -15,10 +15,10 @@ button:focus-visible,input:focus-visible{outline:3px solid #007f78;outline-offse
 dl{margin:0}dt{color:#546c7c;font-size:12px;margin-top:15px}dd{margin:5px 0 0;font-weight:600}
 .legend{font-size:12px;margin:12px 0;display:flex;gap:16px;flex-wrap:wrap}
 .blue{color:#1664ad}.orange{color:#ba6712}.stage{background:#edf6f5;border-left:3px solid #007f78;padding:12px;margin-bottom:18px}
-a{color:#1664ad}.files{display:flex;gap:14px;margin:18px 0}.warning{font-size:12px;border-top:1px solid #d1dfe8;padding-top:15px;line-height:1.9;color:#546c7c}
+a{color:#1664ad}.files{display:flex;flex-wrap:wrap;gap:14px;margin:18px 0}.warning{font-size:12px;border-top:1px solid #d1dfe8;padding-top:15px;line-height:1.9;color:#546c7c}
 @media(max-width:900px){.layout{grid-template-columns:1fr}header span{float:none;display:block;margin-top:8px}}
 </style>
-<header><strong>roboframe / 建图验收</strong><span>真实 odom + scan · 独立进程 IPC · C++14</span></header>
+<header><strong>roboframe / 建图验收</strong><span>录制位姿 + scan · 独立进程 IPC · C++14</span></header>
 <main><h1>基准地图保留，实时地图继续更新。</h1>
 <p class="muted">拖动时间轴查看真实地图快照与录制轨迹。地图按检查点更新，轨迹按扫描时间推进；没有伪造实时 SLAM 或运动控制。</p>
 <div class="layout"><section class="panel">
@@ -31,7 +31,7 @@ a{color:#1664ad}.files{display:flex;gap:14px;margin:18px 0}.warning{font-size:12
 <p class="muted">Python 日志适配 → 管道 IPC → interface → integration<br>odom 输出 → integration 时间匹配 → map-updater → 只读 planner / map-server</p>
 <dl id="stats"></dl>
 <div class="files"><a href="summary.json">验收数据</a><a href="final.png">基准地图</a><a href="live.png">实时地图</a><a href="mapping-events.jsonl">指令回执</a></div>
-<p class="warning">使用每条 FLASER 记录配套的原始位姿，未修改轨迹。旧快照一致和重载通过只表示数据链路通过；地图几何质量需另行评估。planner 只读取数据，不生成路径。复制量不含初始分配、指针表和 IPC 解码；它不是进程总内存统计。结束建图不代表机器人已停止运动。</p>
+<p class="warning"><span id="source-note"></span>旧快照一致和重载通过只表示数据链路通过；地图几何质量需另行评估。planner 只读取数据，不生成路径。复制量不含初始分配、指针表和 IPC 解码；它不是进程总内存统计。结束建图不代表机器人已停止运动。</p>
 </aside></div></main>
 <script>
 const report=__REPORT__, s=report.summary, timeline=document.getElementById('time');
@@ -39,19 +39,24 @@ const canvas=document.getElementById('map'), ctx=canvas.getContext('2d');
 canvas.width=s.width;canvas.height=s.height;timeline.max=s.replayed_scans;timeline.value=s.replayed_scans;
 const images=report.frames.map(f=>{const img=new Image();img.src=f.image;img.onload=draw;return img});
 const stats=[
-['数据输入',s.replayed_scans+' scan / '+s.replayed_odom+' odom'],
+['输入来源',s.dataset_label||'Intel raw-log / original odometry'],
+['数据输入',s.replayed_scans+' scan / '+s.replayed_odom+' pose'],
 ['结束建图指令','第 '+s.finish_after+' 帧之后'],
+['建图区间',s.finish_after+' 帧 / '+(report.trajectory[s.finish_after-1][0]/1e6).toFixed(1)+' 秒'],
+['全部回放时长',(report.trajectory[report.trajectory.length-1][0]/1e6).toFixed(1)+' 秒'],
 ['实际进入地图',s.before.integrated+' 帧'],
 ['时间匹配等丢弃',s.before.dropped+' 帧'],
 ['结束后继续更新',s.resources.live_updates+' scan'],
 ['Planner 读完 / 替换待处理',s.resources.planner_completed+' / '+s.resources.planner_replaced],
 ['Planner 最大持有 / 不一致',s.resources.planner_peak_retained+' 份 / '+s.resources.planner_inconsistent+' 次'],
-['地图块复制总量',(s.resources.copied_bytes/1048576).toFixed(2)+' MiB'],
-['每版全量复制的估算量',(s.full_snapshot_equivalent_bytes/1048576).toFixed(2)+' MiB'],
+['单张地图栅格数据',(s.resources.map_bytes/1048576).toFixed(2)+' MiB'],
+['整段回放累计复制地图块',(s.resources.copied_bytes/1048576).toFixed(2)+' MiB'],
+['若每次全图复制：累计估算',(s.full_snapshot_equivalent_bytes/1048576).toFixed(2)+' MiB'],
 ['结束后改变的栅格',s.changed_cells_after_finish.toLocaleString()],
 ['地图冻结 / 进程重启重载',s.frozen_equal&&s.reloaded_equal?'全部通过':'失败'],
 ['地图',s.width+' × '+s.height+'；'+s.resolution+' m / cell']
 ];
+document.getElementById('source-note').textContent=s.dataset==='corrected'?'使用发布者 corrected-log 的配套校正位姿，这是离线参考地图；不代表本框架运行了 SLAM，也不是实测真值。':'使用 raw-log 配套原始里程计，未修改轨迹。';
 const dl=document.getElementById('stats');
 for(const [k,v] of stats){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;dl.append(dt,dd)}
 function point(p){return [(p[1]-s.origin[0])/s.resolution,s.height-(p[2]-s.origin[1])/s.resolution]}

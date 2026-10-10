@@ -7,3 +7,7 @@
 .cache/
 __pycache__/
 *.py[cod]
+
+# Downloaded reference datasets; provenance and hashes are tracked.
+/data/**/*.gz
+/data/**/*.part

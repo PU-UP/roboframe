@@ -2,6 +2,10 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import gzip
+import hashlib
+import tempfile
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('mapping_replay', ROOT / 'tools/mapping/replay.py')
@@ -31,6 +35,25 @@ class DatasetAdapter(unittest.TestCase):
         odom = replay.parse('ODOM 1 2 3 0 0 0 1.000002 host 0', 43)
         self.assertEqual(odom['pose'], [1, 2, 3])
         self.assertEqual(odom['stamp'], 1000002)
+
+    def test_corrected_profile_and_paired_pose(self):
+        # Exported ODOM can have sub-microsecond garbage; it must never replace paired FLASER poses.
+        text = ('ODOM 99 99 99 0 0 0 6.12103e-62 host 0\n' +
+                self.scan().replace('1.000001', '2.000001') + '\n' + self.scan() + '\n')
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'corrected.gz'
+            path.write_bytes(gzip.compress(text.encode()))
+            profile = dict(replay.DATASETS['corrected'], sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+            with patch.dict(replay.DATASETS, corrected=profile):
+                records, backwards = replay.load(path, 'corrected')
+                self.assertEqual([r['stamp'] for r in records], [1000001, 2000001])
+                self.assertTrue(all(r['kind'] == 'scan' and r['pose'] == [0, 0, 0] for r in records))
+                self.assertEqual(backwards, dict(odom=0, scan=1))
+                with self.assertRaisesRegex(ValueError, 'checksum'):
+                    replay.load(path, 'raw')
+                path.write_bytes(gzip.compress((text + '# changed').encode()))
+                with self.assertRaisesRegex(ValueError, 'checksum'):
+                    replay.load(path, 'corrected')
 
     def test_reject_and_filter(self):
         self.assertEqual(replay.parse('# comment', 1), None)
