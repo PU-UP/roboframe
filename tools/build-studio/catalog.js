@@ -4,6 +4,8 @@ globalThis.BuildCatalog = {
   components: [
     { id: "odom", name: "Odom", description: "PassthroughOdomComponent · 现有里程计输入与输出",
       implemented: true, package: "Odom", target: "Odom::component", sourcePath: "components/odom" },
+    { id: "lidar-map", name: "Lidar map", description: "RecordedLidarMapComponent · 录制参考位姿校正",
+      implemented: true, package: "LidarMap", target: "LidarMap::component", sourcePath: "components/lidar-map" },
     { id: "map-updater", name: "Map updater", description: "OccupancyMapComponent · 占据地图更新",
       implemented: true, package: "MapUpdater", target: "MapUpdater::component", sourcePath: "components/map-updater" },
     { id: "map-server", name: "Map server", description: "FileMapComponent · 地图保存与加载",
@@ -13,7 +15,7 @@ globalThis.BuildCatalog = {
   ],
   scenarios: [
     { id: "current", name: "当前产品", integration: "RobotIntegration", buildReady: true,
-      components: ["odom", "map-updater", "map-server", "planner"], defaults: ["SOURCE", "SOURCE", "SOURCE", "SOURCE"] }
+      components: ["odom", "lidar-map", "map-updater", "map-server", "planner"], defaults: ["SOURCE", "SOURCE", "SOURCE", "SOURCE", "SOURCE"] }
   ],
   platforms: [
     { id: "linux-x86_64", name: "Linux x86_64 · 本机开发", buildReady: true,

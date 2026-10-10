@@ -55,6 +55,22 @@ class DatasetAdapter(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'checksum'):
                     replay.load(path, 'corrected')
 
+    def test_pairing_uses_measurements_and_preserves_raw_odometry(self):
+        raw = [replay.parse(self.scan().replace('1.000001', '10.000001'), 1),
+               replay.parse(self.scan([2]*180).replace('1.000001', '11.000001'), 2)]
+        corrected = [replay.parse(self.scan(pose=[5, 2, 0.2, 5, 2, 0.2]), 42)]
+        paired = replay.pair_references(raw, corrected)
+        self.assertEqual(paired[0]['pose'], [0, 0, 0])
+        self.assertEqual(paired[0]['stamp'], 10000001)
+        self.assertEqual(paired[0]['reference_source_stamp'], 1000001)
+        self.assertEqual(paired[0]['map_reference'], [5, 2, 0.2])
+        self.assertNotIn('map_reference', paired[1])
+        self.assertAlmostEqual(paired[1]['display_pose'][0], 5)
+        with self.assertRaisesRegex(ValueError, 'exactly one'):
+            replay.pair_references([replay.parse(self.scan(), 1)]*2, corrected)
+        with self.assertRaisesRegex(ValueError, 'exactly one'):
+            replay.pair_references([], corrected)
+
     def test_reject_and_filter(self):
         self.assertEqual(replay.parse('# comment', 1), None)
         ranges = [1] * 180

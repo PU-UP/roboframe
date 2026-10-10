@@ -56,11 +56,16 @@ void OccupancyMapComponent::Ray(int x, int y, int end_x, int end_y) {
         if (twice <= dx) { error += dx; y += sy; }
     }
 }
-Update OccupancyMapComponent::PushScan(const roboframe::Scan2DPtr& scan, const roboframe::TimedPose2D& pose) {
+Update OccupancyMapComponent::PushScan(const roboframe::Scan2DPtr& scan, const roboframe::ScanTransforms2D& transforms) {
     if (lifecycle_ != roboframe::Lifecycle::active) throw std::logic_error("grid inactive");
     if (!scan) throw std::invalid_argument("null scan");
     ValidateScan(*scan);
-    roboframe::ValidatePose(pose);
+    roboframe::ValidateTransforms(transforms);
+    const auto& correction = transforms.map_from_odom.pose;
+    if (spec_.frame == roboframe::GridFrame::odom &&
+        (correction.x != 0 || correction.y != 0 || correction.yaw != 0))
+        throw std::invalid_argument("map correction supplied to odom-frame grid");
+    const roboframe::TimedPose2D pose{transforms.odom_from_base.stamp_us, roboframe::MapFromBase(transforms)};
     if (scan->stamp_us != pose.stamp_us) throw std::invalid_argument("scan/pose timestamps differ");
     if (scan->stamp_us <= stamp_us_) throw std::invalid_argument("grid scan timestamps must increase");
     int x, y;

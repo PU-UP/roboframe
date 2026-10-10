@@ -75,7 +75,7 @@ function update() {
     byId("notice").append(list);
   } else {
     byId("notice").textContent = plan.allPackage ?
-      "请提供 SDK 3.0 与四个配套组件开发包；页面不检查包是否存在或兼容。" :
+      "请提供 SDK 4.0 与五个配套组件开发包；页面不检查包是否存在或兼容。" :
       "命令按各组件来源生成。在 WSL / Linux 的 roboframe 根目录执行；页面不执行构建，混合模式需要 SDK 安装包。";
   }
   byId("preview-label").textContent = previewOnly ? "待框架支持后再接入执行" : "在 roboframe 根目录运行";

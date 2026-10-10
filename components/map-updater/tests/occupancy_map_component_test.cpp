@@ -8,42 +8,48 @@ template<class F> void Reject(F f) {
 int main() {
     map_updater::OccupancyMapComponent grid({10, 10, 1, 0, 0});
     auto scan = std::make_shared<const roboframe::Scan2D>(roboframe::Scan2D{1, {{3, 0}}});
-    Reject([&] { grid.PushScan(scan, {1, {1.5, 1.5, 0}}); });
+    Reject([&] { grid.PushScan(scan, {{1, {1.5, 1.5, 0}}, {1, {}}}); });
     grid.Activate();
     grid.Reset();
     const auto empty = grid.Snapshot();
-    Check(grid.PushScan(scan, {1, {1.5, 1.5, 0}}).used_rays == 1);
+    Check(grid.PushScan(scan, {{1, {1.5, 1.5, 0}}, {1, {}}}).used_rays == 1);
     const auto map = grid.Snapshot();
     Check(map->cells[14] == 0 && map->cells[11] == 254 && map->cells[12] == 254);
     Check(empty->cells[14] == 205 && empty->revision == 0);
     Check(grid.Snapshot() == grid.Snapshot());
     Check(grid.copied_bytes() == roboframe::GridCells::block_capacity);
     Check(scan->hits[0].x == 3);
-    Reject([&] { grid.PushScan(scan, {1, {}}); });
+    Reject([&] { grid.PushScan(scan, {{1, {}}, {1, {}}}); });
     auto second = std::make_shared<const roboframe::Scan2D>(roboframe::Scan2D{2, {{3, 0}}});
-    Reject([&] { grid.PushScan(second, {3, {}}); });
-    Reject([&] { grid.PushScan(second, {2, {-2, 0, 0}}); });
+    Reject([&] { grid.PushScan(second, {{3, {}}, {3, {}}}); });
+    Reject([&] { grid.PushScan(second, {{2, {-2, 0, 0}}, {2, {}}}); });
     Check(grid.revision() == 1);
     auto invalid = std::make_shared<const roboframe::Scan2D>(roboframe::Scan2D{2, {{3, 0}, {30, 0}}});
-    Reject([&] { grid.PushScan(invalid, {2, {1.5, 1.5, 0}}); });
+    Reject([&] { grid.PushScan(invalid, {{2, {1.5, 1.5, 0}}, {2, {}}}); });
     Check(grid.revision() == 1);
-    const auto outside = grid.PushScan(second, {2, {9.5, 1.5, 0}});
+    const auto outside = grid.PushScan(second, {{2, {9.5, 1.5, 0}}, {2, {}}});
     Check(outside.used_rays == 0 && outside.outside_rays == 1);
     grid.Reset();
     auto crossing = std::make_shared<const roboframe::Scan2D>(
         roboframe::Scan2D{3, {{3, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}}});
-    grid.PushScan(crossing, {3, {1.5, 1.5, 0}});
+    grid.PushScan(crossing, {{3, {1.5, 1.5, 0}}, {3, {}}});
     const auto forward = grid.Snapshot();
     Check(forward->cells[14] == 0); // An observed endpoint wins over crossing rays in the same scan.
     grid.Reset();
     auto reversed = std::make_shared<roboframe::Scan2D>(crossing->stamp_us, crossing->hits);
     std::reverse(reversed->hits.begin(), reversed->hits.end());
-    grid.PushScan(reversed, {3, {1.5, 1.5, 0}});
+    grid.PushScan(reversed, {{3, {1.5, 1.5, 0}}, {3, {}}});
     Check(grid.Snapshot()->cells == forward->cells);
     grid.Reset();
     const double half_pi = 1.5707963267948966;
-    grid.PushScan(scan, {1, {1.5, 1.5, half_pi}});
+    grid.PushScan(scan, {{1, {1.5, 1.5, half_pi}}, {1, {}}});
     Check(grid.Snapshot()->cells[41] == 0); // +x in base becomes +y in odom.
     grid.Reset();
     Check(map->cells[14] == 0 && grid.Snapshot()->cells[14] == 205);
+    map_updater::OccupancyMapComponent global({20,20,1,0,0,roboframe::GridFrame::map});
+    global.Activate(); global.Reset();
+    global.PushScan(scan, {{1,{1.5,1.5,0}}, {0,{10,0,half_pi}}});
+    Check(global.Snapshot()->cells[4*20+8]==0); // T_map_base=(8.5,1.5,pi/2), hit=(8.5,4.5).
+    Reject([&]{grid.PushScan(scan, {{1,{}},{1,{1,0,0}}});});
+
 }

@@ -76,7 +76,9 @@ void FileMapComponent::Save(const std::string& name, const roboframe::GridSnapsh
     metadata << std::setprecision(17) << map->spec.width << ' ' << map->spec.height << ' '
              << map->spec.resolution << ' ' << map->spec.origin_x << ' ' << map->spec.origin_y << ' '
              << map->revision << ' ' << map->stamp_us;
-    const std::string header = "RFGRID1\n" + metadata.str() + "\n" +
+    const bool map_frame = map->spec.frame == roboframe::GridFrame::map;
+    if (map_frame) metadata << " map";
+    const std::string header = std::string(map_frame ? "RFGRID2\n" : "RFGRID1\n") + metadata.str() + "\n" +
         std::to_string(Hash(metadata.str(), map->cells)) + "\n";
     std::string temporary = directory_ + "/.rfgrid-XXXXXX";
     std::vector<char> path(temporary.begin(), temporary.end());
@@ -115,7 +117,8 @@ roboframe::GridSnapshot FileMapComponent::Load(const std::string& name) const {
         }
         throw std::runtime_error("incomplete map header");
     };
-    if (line() != "RFGRID1") throw std::runtime_error("unsupported map format");
+    const auto format = line();
+    if (format != "RFGRID1" && format != "RFGRID2") throw std::runtime_error("unsupported map format");
     const auto metadata = line();
     const auto checksum = line();
     auto map = std::make_shared<roboframe::Grid>();
@@ -127,6 +130,11 @@ roboframe::GridSnapshot FileMapComponent::Load(const std::string& name) const {
         throw std::runtime_error("invalid map geometry");
     map->revision = Unsigned(fields, std::numeric_limits<std::uint64_t>::max());
     map->stamp_us = static_cast<std::int64_t>(Unsigned(fields, std::numeric_limits<std::int64_t>::max()));
+    if (format == "RFGRID2") {
+        std::string frame;
+        if (!(fields >> frame) || frame != "map") throw std::runtime_error("invalid map frame");
+        map->spec.frame = roboframe::GridFrame::map;
+    }
     if (fields >> extra) throw std::runtime_error("unexpected map metadata");
     roboframe::ValidateGridSpec(map->spec);
     map->cells = roboframe::GridCells(std::size_t(map->spec.width) * map->spec.height);

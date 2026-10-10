@@ -54,13 +54,13 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
     configure(sdk, work / 'sdk-build')
     verify(work / 'sdk-build')
     run(['cmake', '--install', work / 'sdk-build', '--prefix', prefix])
-    for name in ['odom', 'map-updater', 'map-server', 'planner']:
+    for name in ['odom', 'lidar-map', 'map-updater', 'map-server', 'planner']:
         source = work / name
         copy(ROOT / 'components' / name, source)
         configure(source, work / (name + '-build'), prefix)
         verify(work / (name + '-build'))
         run(['cmake', '--install', work / (name + '-build'), '--prefix', prefix])
-    checks.append('PASS: all 4 components independently build/test/install with SDK only')
+    checks.append('PASS: all 5 components independently build/test/install with SDK only')
 
     app = work / 'app'
     app.mkdir()
@@ -105,7 +105,7 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
 
     # Installed manifests describe the package build, not the consumer's current SDK.
     sdk_version = field(sdk / 'VERSION', 'ROBOFRAME_SDK_VERSION')
-    for name in ['odom', 'map-updater', 'map-server', 'planner']:
+    for name in ['odom', 'lidar-map', 'map-updater', 'map-server', 'planner']:
         manifest = relocated / 'share/roboframe' / name / 'VERSION'
         assert field(manifest, 'component_name') == name
         assert field(manifest, 'component_built_with_sdk') == sdk_version

@@ -19,6 +19,7 @@ def check(path):
     assert len(scans) == 910
     assert all(tuple(map(tuple, s['hits'])) in raw_points for s in scans)
     grid = replay.read_map(path)
+    assert grid['frame'] == 'map', 'regenerate the corrected reference with explicit map-frame TF'
     assert grid['revision'] == len(scans), 'use the live map containing all corrected scans'
     w, h, res, cells = grid['width'], grid['height'], grid['resolution'], grid['cells']
     # Conservative square clearance plus one cell for boundaries/segments; unknown is blocked.
@@ -61,7 +62,7 @@ def check(path):
         return [grid['origin'][0]+(index%w+0.5)*res,
                 grid['origin'][1]+(index//w+0.5)*res]
     return dict(passed=True, dataset='corrected', matched_raw_scans=len(scans),
-                map_revision=grid['revision'], map_frame='corrected_reference',
+                map_revision=grid['revision'], map_frame=grid['frame'],
                 robot_half_width_m=radius, conservative_margin_cells=margin,
                 unknown_is_blocked=True, reachable_cells=len(parent),
                 path_length_m=round(length, 3), start=center(start), goal=center(end),

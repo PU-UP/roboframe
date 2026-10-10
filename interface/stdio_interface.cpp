@@ -3,6 +3,7 @@
 #include <roboframe/mapping.hpp>
 #include <roboframe/scan2d.hpp>
 #include <iostream>
+#include <iomanip>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -62,11 +63,26 @@ bool StdioInterface::Dispatch(const std::string& line) {
         Send("BYE");
         return false;
     }
+    if (command == "TF") {
+        End(input);
+        const auto state = integration_.transforms();
+        if (!state.valid) { Send("TF unavailable"); return true; }
+        const auto& tf = state.transforms;
+        const auto global = MapFromBase(tf);
+        std::ostringstream out;
+        out << std::setprecision(17) << "TF " << tf.odom_from_base.stamp_us << ' ' << tf.map_from_odom.stamp_us;
+        for (const auto& p : {tf.odom_from_base.pose, tf.map_from_odom.pose, global})
+            out << ' ' << p.x << ' ' << p.y << ' ' << p.yaw;
+        Send(out.str());
+        return true;
+    }
     if (command == "RESOURCES") {
         End(input);
         const auto s = integration_.data_flow_status();
         std::ostringstream out;
         out << "RESOURCES";
+        out << " lidar_scans=" << s.lidar_scans << " correction_outputs=" << s.correction_outputs
+            << " missed_references=" << s.missed_references << " tf_dropped=" << s.tf_dropped;
         out << " shared_scans=" << s.shared_scans;
         out << " live_updates=" << s.live_updates;
         out << " live_dropped=" << s.live_dropped;
@@ -94,6 +110,12 @@ bool StdioInterface::Dispatch(const std::string& line) {
         spec.origin_x = Number(input);
         spec.origin_y = Number(input);
         options.max_pose_gap_us = static_cast<std::int64_t>(Unsigned(input, 10000000));
+        std::string mode;
+        if (input >> mode) {
+            if (mode != "MAP_TF") throw std::invalid_argument("expected MAP_TF");
+            options.grid.frame = GridFrame::map;
+            options.max_correction_age_us = static_cast<std::int64_t>(Unsigned(input, 60000000));
+        }
         End(input);
         integration_.Configure(options);
     } else {
@@ -109,6 +131,12 @@ bool StdioInterface::Dispatch(const std::string& line) {
             pose.pose.yaw = Number(input);
             End(input);
             integration_.PushOdometry(pose);
+        } else if (command == "MAP_POSE") {
+            MapPose2D pose;
+            pose.stamp_us = static_cast<std::int64_t>(Unsigned(input));
+            pose.pose.x = Number(input); pose.pose.y = Number(input); pose.pose.yaw = Number(input);
+            End(input);
+            integration_.PushMapReference(pose);
         } else if (command == "SCAN") {
             auto scan = std::make_shared<roboframe::Scan2D>();
             scan->stamp_us = static_cast<std::int64_t>(Unsigned(input));

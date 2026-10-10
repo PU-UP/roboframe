@@ -74,6 +74,36 @@ class MappingIPC(unittest.TestCase):
             self.assertEqual((root / 'baseline.rfgrid').read_bytes(), (root / 'preserved.rfgrid').read_bytes())
             self.assertNotEqual((root / 'baseline.rfgrid').read_bytes(), (root / 'live.rfgrid').read_bytes())
 
+    def test_tf_chain_expiry_reset_and_persistence(self):
+        config = 'CONFIG 30 30 1 -10 -10 100 MAP_TF 20\n'
+        with tempfile.TemporaryDirectory() as directory:
+            lines = self.run_session(config +
+                'BEGIN 1\nODOM 0 1 0 0\nSCAN 0 1 2 0\nTF\n'
+                'MAP_POSE 10 5 0 0\nSCAN 10 1 2 0\nSTATUS\nODOM 10 2 0 0\nTF\n'
+                'ODOM 20 3 0 0\nSCAN 20 1 2 0\nTF\n'
+                'ODOM 31 4 0 0\nSCAN 31 1 2 0\nTF\n'
+                'MAP_POSE 40 7 0 0\nODOM 40 5 0 0\nSCAN 40 1 2 0\nTF\n'
+                'FINISH\nSAVE mapped\nRESOURCES\n'
+                'BEGIN 2\nODOM 50 6 0 0\nSCAN 50 1 2 0\nTF\nCANCEL\nQUIT\n', directory)
+            self.assertFalse(any(line.startswith('ERROR') for line in lines))
+            self.assertEqual(lines.count('TF unavailable'), 3)  # Initial, expired, and new session.
+            self.assertIn('TF 10 10 2 0 0 3 0 0 5 0 0', lines)
+            self.assertIn('TF 20 10 3 0 0 3 0 0 6 0 0', lines)  # Old correction, current odom.
+            self.assertIn('TF 40 40 5 0 0 2 0 0 7 0 0', lines)
+            resources = next(line for line in lines if line.startswith('RESOURCES '))
+            self.assertIn('correction_outputs=2', resources)
+            self.assertIn('tf_dropped=2', resources)
+            file = pathlib.Path(directory) / 'mapped.rfgrid'
+            self.assertTrue(file.read_bytes().startswith(b'RFGRID2\n'))
+            lines = self.run_session(config + 'LOAD mapped\nTF\nSAVE copy\nQUIT\n', directory)
+            self.assertIn('TF unavailable', lines)  # Loading a map is not localization.
+            self.assertEqual(file.read_bytes(), (pathlib.Path(directory)/'copy.rfgrid').read_bytes())
+            lines = self.run_session(CONFIG + 'LOAD mapped\nQUIT\n', directory)
+            self.assertTrue(any('frame differs' in line for line in lines))
+            lines = self.run_session(config + 'BEGIN 1\nMAP_POSE 10 0 0 0 extra\n'
+                                    'MAP_POSE 10 nan 0 0\nQUIT\n', directory)
+            self.assertEqual(sum(line.startswith('ERROR') for line in lines), 2)
+
     def test_eof_is_not_finish_or_save(self):
         with tempfile.TemporaryDirectory() as directory:
             lines = self.run_session(CONFIG + 'BEGIN 1\nODOM 0 0 0 0\nSCAN 0 1 2 0\nSAVE partial', directory)

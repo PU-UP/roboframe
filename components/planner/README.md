@@ -7,4 +7,4 @@ Activate/Deactivate/Submit 由 owner 串行调用；status/WaitIdle 可跨线程
 单元测试 tests/read_only_planner_component_test.cpp 可独立运行。
 
 只依赖产品指定 SDK；支持独立构建、安装与 SOURCE/PACKAGE 接入。
-源码标识和实际编译 SDK 自动生成。当前公共存储接口使用 SDK 3.0。
+源码标识和实际编译 SDK 自动生成。当前公共存储接口使用 SDK 4.0。

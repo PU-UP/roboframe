@@ -1,6 +1,6 @@
 #pragma once
 #include <roboframe/component.hpp>
-#include <roboframe/geometry2d.hpp>
+#include <roboframe/transforms2d.hpp>
 #include <roboframe/scan2d.hpp>
 #include <roboframe/grid.hpp>
 #include <map_updater/version.hpp>
@@ -20,7 +20,7 @@ public:
     roboframe::Lifecycle lifecycle() const override { return lifecycle_; }
     void Reset();
     // Once per scan per cell; occupied endpoints override free rays within that scan.
-    Update PushScan(const roboframe::Scan2DPtr& scan, const roboframe::TimedPose2D& odometry);
+    Update PushScan(const roboframe::Scan2DPtr& scan, const roboframe::ScanTransforms2D& transforms);
     roboframe::GridSnapshot Snapshot() const;
     std::uint64_t revision() const { return revision_; }
     std::uint64_t copied_bytes() const { return copied_bytes_; }

@@ -7,6 +7,7 @@ namespace roboframe {
 struct MappingOptions {
     GridSpec grid;
     std::int64_t max_pose_gap_us = 250000; // Positive interpolation bracket limit; no extrapolation.
+    std::int64_t max_correction_age_us = 20000000; // map-frame mode; no future correction interpolation.
 };
 enum class MappingPhase { idle, mapping, ready };
 struct MappingStatus {

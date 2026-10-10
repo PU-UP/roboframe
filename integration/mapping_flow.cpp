@@ -8,6 +8,8 @@ void RobotIntegration::Impl::StartMapping(std::uint64_t id) {
     if (status_.phase == MappingPhase::mapping) throw std::logic_error("mapping already running");
     if (!id || id <= status_.session) throw std::invalid_argument("session id must increase");
     grid_.Reset();
+    lidar_map_.Reset();
+    has_correction_ = false; transforms_ = {};
     resources_.live_dropped += pending_.size();
     pending_.clear();
     frozen_.reset();
@@ -40,6 +42,7 @@ void RobotIntegration::Impl::CancelMapping() {
     pending_.clear();
     status_.phase = MappingPhase::idle;
     updating_ = false;
+    lidar_map_.Reset(); has_correction_ = false; transforms_ = {};
     latest_scan_.reset();
     frozen_.reset();
     ROBO_LOG_INFO("mapping") << "canceled session=" << status_.session;
@@ -60,6 +63,8 @@ void RobotIntegration::Impl::LoadMap(const std::string& name) {
     RequireActive();
     if (status_.phase == MappingPhase::mapping) throw std::logic_error("cannot load during mapping");
     auto map = store_.Load(name); // Failure preserves the existing map and phase.
+    if (map->spec.frame != frame_) throw std::invalid_argument("loaded map frame differs from product frame");
+    lidar_map_.Reset(); has_correction_ = false; transforms_ = {};
     frozen_ = std::move(map);
     live_ = frozen_;
     resources_.live_dropped += pending_.size();

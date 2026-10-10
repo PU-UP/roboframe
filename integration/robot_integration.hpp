@@ -2,6 +2,7 @@
 #include <roboframe/scan2d.hpp>
 #include <roboframe/mapping.hpp>
 #include <roboframe/data_flow.hpp>
+#include <roboframe/transforms2d.hpp>
 #include <memory>
 #include <string>
 
@@ -22,6 +23,8 @@ public:
     void SnapshotMap(const std::string& name); // Inspection checkpoint; does not finish mapping.
     void LoadMap(const std::string& name);
     void PushOdometry(const TimedPose2D& pose);
+    void PushMapReference(const MapPose2D& pose);
+    TransformStatus2D transforms() const;
     void PushScan(roboframe::Scan2DPtr scan);
     void Shutdown();
     const MappingStatus& mapping_status() const;

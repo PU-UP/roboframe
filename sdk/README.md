@@ -1,4 +1,4 @@
-# Roboframe SDK 3.0
+# Roboframe SDK 4.0
 interface、integration、component 共用的公开契约和小型基础设施。
 SDK 位于主目录的 sdk/，与 interfaces/、products/、components/ 并列；
 后两种复数目录是未来多产品布局，当前不为占位而搬动目录或创建空产品。
@@ -72,7 +72,8 @@ component 开发者不维护 SDK 版本、组件发布数字或独立 contract_v
 根目录构建会检查源码 SDK 或安装包是否与产品选择一致。
 
 SDK 2.0 已移除独立契约版本；SDK 3.0 将 Grid::cells 改为分块写时复制，
-Scan2D 改为只能移动而不能复制。这些是公开接口变化，旧组件开发包必须重建。
+Scan2D 改为只能移动而不能复制。SDK 4.0 增加明确的 TF 数据结构、GridSpec.frame 和 mapper 完整变换入参。
+这些是公开接口变化，旧组件开发包必须重建。
 Scan2DPtr 和 GridSnapshot 跨模块只读共享；具体所有权与更新约束见
 [数据共享说明](../docs/data-sharing.md)。
 产品配置阶段会拒绝缺少构建元数据的旧包。
@@ -110,3 +111,5 @@ cmake --build build-sdk
 ctest --test-dir build-sdk --output-on-failure
 cmake --install build-sdk --prefix /tmp/roboframe-sdk
 ~~~
+
+TF 契约见 [坐标链路](../docs/transforms.md)：TimedPose2D 固定为 T_odom_base，不能塞入全局校正 pose。

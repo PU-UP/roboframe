@@ -29,7 +29,7 @@ Snapshot 在版本不变时复用同一个对象，不重新遍历整个 evidenc
 
 新旧快照共享未修改块；旧读者继续使用旧块。快照不会被后续写入改变。
 没有共享的可变整图，也不需要让消费者持有地图写锁。
-map-server 分块读写，RFGRID1 的磁盘布局与校验和保持不变，不额外拼接完整像素缓冲。
+map-server 分块读写，odom 地图仍使用 RFGRID1，map 地图采用含坐标标签的 RFGRID2，不额外拼接完整像素缓冲。
 
 SDK 测试构造 8,000,000 格地图，保留 21 个逻辑版本，每次修改一个块：
 仅额外复制 20 × 4096 字节，未修改块地址相同；旧版本释放后弱引用失效。
@@ -75,7 +75,7 @@ python3 tests/build_isolation_test.py
 python3 tools/mapping/replay.py --scans 0 --finish-after 12267 --output build-product/shared-data-result
 ~~~
 输出目录须不存在。浏览 replay.html 可对比基准/实时地图并查看资源指标；
-summary.json 和指令回执保留实际执行记录。新版本 SDK 为 3.0，所有组件开发包需重建。
+summary.json 和指令回执保留实际执行记录。当前 SDK 为 4.0，所有组件开发包需重建。
 
 一次全量验收：13,631 帧，基准建图 12,267 帧，之后更新 1,364 帧；
 实时地图相对基准变化 37,315 个格，基准文件与改造前逐字节一致。
@@ -86,3 +86,5 @@ planner 最多持有两项，读取不一致为零；具体完成/替换次数�
 
 并发检查限制：当前 WSL 的 TSan 在进入测试前因 unexpected memory mapping 退出，
 未取得 TSan 通过结论；ASan/UBSan 与异步共享行为测试通过。
+
+新增 lidar-map 与完整 TF 后的数据复用见 [坐标链路](transforms.md)，组件同样共享输入 scan。

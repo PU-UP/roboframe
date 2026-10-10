@@ -28,9 +28,9 @@ a{color:#1664ad}.files{display:flex;flex-wrap:wrap;gap:14px;margin:18px 0}.warni
 <p id="snapshot" class="muted"></p>
 </section><aside class="panel">
 <h2>链路与验收结果</h2><div class="stage" id="stage"></div>
-<p class="muted">Python 日志适配 → 管道 IPC → interface → integration<br>odom 输出 → integration 时间匹配 → map-updater → 只读 planner / map-server</p>
+<p class="muted">Python 日志适配 → 管道 IPC → interface → integration<br>odom → lidar-map 校正 → 完整 TF + scan → map-updater → 只读 planner / map-server</p>
 <dl id="stats"></dl>
-<div class="files"><a href="summary.json">验收数据</a><a href="final.png">基准地图</a><a href="live.png">实时地图</a><a href="mapping-events.jsonl">指令回执</a></div>
+<div class="files"><a id="tf-link" href="tf-trace.json" hidden>TF记录</a><a href="summary.json">验收数据</a><a href="final.png">基准地图</a><a href="live.png">实时地图</a><a href="mapping-events.jsonl">指令回执</a></div>
 <p class="warning"><span id="source-note"></span>旧快照一致和重载通过只表示数据链路通过；地图几何质量需另行评估。planner 只读取数据，不生成路径。复制量不含初始分配、指针表和 IPC 解码；它不是进程总内存统计。结束建图不代表机器人已停止运动。</p>
 </aside></div></main>
 <script>
@@ -45,6 +45,10 @@ const stats=[
 ['建图区间',s.finish_after+' 帧 / '+(report.trajectory[s.finish_after-1][0]/1e6).toFixed(1)+' 秒'],
 ['全部回放时长',(report.trajectory[report.trajectory.length-1][0]/1e6).toFixed(1)+' 秒'],
 ['实际进入地图',s.before.integrated+' 帧'],
+['地图坐标系',s.map_frame||s.reference_frame||'odom'],
+['lidar-map 输入 / 校正输出',(s.resources.lidar_scans||0)+' / '+(s.resources.correction_outputs||0)],
+['TF 未就绪或过期跳过',(s.resources.tf_dropped||0)+' 帧'],
+['TF 数值校验',(s.tf_checks||0)+' 次'],
 ['时间匹配等丢弃',s.before.dropped+' 帧'],
 ['结束后继续更新',s.resources.live_updates+' scan'],
 ['Planner 读完 / 替换待处理',s.resources.planner_completed+' / '+s.resources.planner_replaced],
@@ -56,7 +60,8 @@ const stats=[
 ['地图冻结 / 进程重启重载',s.frozen_equal&&s.reloaded_equal?'全部通过':'失败'],
 ['地图',s.width+' × '+s.height+'；'+s.resolution+' m / cell']
 ];
-document.getElementById('source-note').textContent=s.dataset==='corrected'?'使用发布者 corrected-log 的配套校正位姿，这是离线参考地图；不代表本框架运行了 SLAM，也不是实测真值。':'使用 raw-log 配套原始里程计，未修改轨迹。';
+document.getElementById('source-note').textContent=s.dataset==='tf'?'原始 odom 与扫描经组件处理，lidar-map 使用配对的录制参考位姿产生低频校正；非在线 SLAM，校正间只使用过去有效的变换。':s.dataset==='corrected'?'使用发布者 corrected-log 的配套校正位姿，这是离线参考地图；不代表本框架运行了 SLAM，也不是实测真值。':'使用 raw-log 配套原始里程计，未修改轨迹。';
+document.getElementById('tf-link').hidden=!(s.tf_checks>0);
 const dl=document.getElementById('stats');
 for(const [k,v] of stats){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;dl.append(dt,dd)}
 function point(p){return [(p[1]-s.origin[0])/s.resolution,s.height-(p[2]-s.origin[1])/s.resolution]}

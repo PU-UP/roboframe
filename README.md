@@ -13,6 +13,7 @@ integration/data_flow.cpp              数据接线、同步、分发
 integration/pose_buffer.*               产品内部的有界缓存与插值工具
 integration/mapping_flow.cpp            建图流程、地图操作
 components/odom/                        PassthroughOdomComponent
+components/lidar-map/                   RecordedLidarMapComponent（录制校正后端）
 components/map-updater/                 OccupancyMapComponent
 components/map-server/                  FileMapComponent
 components/planner/                     ReadOnlyPlannerComponent（读取验证，不生成路径）
@@ -33,6 +34,7 @@ CONFIG 调用 Configure 后才创建并激活组件；失败不留下半配置�
 组件依赖为 PRIVATE，不再通过 integration 向 interface 传播组件头文件。
 
 Odom 是能力；PassthroughOdomComponent 校验并透传已有 odom，不估计或修正轨迹。
+完整 TF 与录制校正接线见 [坐标链路](docs/transforms.md)。
 Map updater 更新占据地图，Map server 保存/读取地图；它们不决定何时开始建图。
 MappingStatus 只表示建图会话，不代表组件生命周期或整个产品状态。
 同一个 integration 可以多次建图、取消、加载；其他流程可以复用相同组件，
@@ -111,7 +113,7 @@ BUILD_TESTING=OFF 不要求 Python，不编译测试 main。
 
 ## 版本维护
 SDK 维护者只维护 sdk/VERSION；产品维护者在 cmake/Dependencies.cmake 选择 SDK
-精确版本与组件清单。当前使用 SDK 3.0，Grid 的分块存储接口有变化，旧组件包须重建。
+精确版本与组件清单。当前使用 SDK 4.0，Grid 坐标字段与 mapper 的 TF 输入接口有变化，旧组件包须重建。
 component 不再有手写 VERSION 或 contract_version，也不自行填写 SDK 要求。
 源码标识和实际编译 SDK 自动生成，安装包携带原始记录；启动时只检查 SDK 兼容性。
 源码变化自动更新指纹，SDK 与产物记录不同则按兼容规则拒绝，不篡改旧包记录。

@@ -6,14 +6,16 @@
 #include <roboframe/grid_cells.hpp>
 
 namespace roboframe {
-// Cell (0,0) is bottom-left in odom; cells are row-major, y increasing upwards.
+enum class GridFrame { odom, map };
+// Cell (0,0) is bottom-left in the explicitly named frame; cells are row-major, y increasing upwards.
 // Values: occupied=0, free=254, unknown=205. No navigation inflation.
 struct GridSpec {
     std::uint32_t width = 0, height = 0;
     double resolution = 0.1, origin_x = 0, origin_y = 0;
+    GridFrame frame = GridFrame::odom;
 };
 inline void ValidateGridSpec(const GridSpec& spec) {
-    if (!spec.width || !spec.height || spec.width > 4096 || spec.height > 4096 ||
+    if ((spec.frame != GridFrame::odom && spec.frame != GridFrame::map) || !spec.width || !spec.height || spec.width > 4096 || spec.height > 4096 ||
         std::uint64_t(spec.width) * spec.height > 8000000 ||
         !std::isfinite(spec.resolution) || spec.resolution < 0.02 || spec.resolution > 2 ||
         !std::isfinite(spec.origin_x) || !std::isfinite(spec.origin_y) ||

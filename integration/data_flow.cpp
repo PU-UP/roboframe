@@ -10,6 +10,12 @@ void RobotIntegration::Impl::RouteOdometry(const TimedPose2D& pose) {
     pose_buffer_.PushOdometry(pose);
     if (updating_) Drain(false);
 }
+void RobotIntegration::Impl::PushMapReference(const MapPose2D& pose) {
+    RequireActive();
+    if (frame_ != GridFrame::map || !updating_)
+        throw std::logic_error("reference requires active map-frame mapping");
+    lidar_map_.PushReferencePose(pose);
+}
 void RobotIntegration::Impl::PushScan(roboframe::Scan2DPtr scan) {
     RequireActive();
     if (!scan) throw std::invalid_argument("null scan");
@@ -35,7 +41,18 @@ void RobotIntegration::Impl::Drain(bool finishing) {
         if (match == roboframe::PoseMatch::waiting && !finishing) break;
         if (match == roboframe::PoseMatch::ready) {
             try {
-                const auto update = grid_.PushScan(pending_.front(), pose);
+                lidar_map_.PushScan(pending_.front(), pose);
+                transforms_ = {};
+                if (frame_ == GridFrame::map && (!has_correction_ || correction_.stamp_us > pose.stamp_us ||
+                        pose.stamp_us - correction_.stamp_us > max_correction_age_us_)) {
+                    ++resources_.tf_dropped;
+                    if (status_.phase == MappingPhase::mapping) { ++status_.dropped; ++status_.drop_sync; }
+                    else { ++resources_.live_dropped; }
+                    pending_.pop_front();
+                    continue;
+                }
+                transforms_ = {true, {pose, frame_ == GridFrame::map ? correction_ : MapCorrection2D{pose.stamp_us, {}}}};
+                const auto update = grid_.PushScan(pending_.front(), transforms_.transforms);
                 if (status_.phase == MappingPhase::mapping) {
                     ++status_.integrated;
                     status_.used_rays += update.used_rays;
@@ -76,6 +93,9 @@ void RobotIntegration::Impl::WaitPlanner() {
 }
 DataFlowStatus RobotIntegration::Impl::Resources() const {
     auto result = resources_;
+    result.lidar_scans = lidar_map_.received();
+    result.correction_outputs = lidar_map_.published();
+    result.missed_references = lidar_map_.missed_references();
     result.copied_bytes = grid_.copied_bytes();
     if (live_) {
         result.map_bytes = live_->cells.size();

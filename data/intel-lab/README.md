@@ -50,12 +50,12 @@ python3 tests/intel_reference_check.py build-product/corrected-reference/live.rf
 
 ## 接入边界与规划使用
 继续复用 Python → IPC → interface → integration → odom透传 / map-updater → map-server / 只读planner。
-只改变离线适配器的数据来源，没有增加 SLAM、导航或 BT 实现。
+通过录制 lidar-map 后端模拟定位输出，没有增加真实 SLAM、导航或 BT 实现。
 
-当前框架只有一个隐式工作坐标系，IPC ODOM 是已有位姿输入槽；corrected 回放将这个槽整体用作离线参考坐标系。
-因此 summary.json 标为 `corrected_reference`，不能把该位姿当成真实设备连续输出的本地 odom。
-**RFGRID1 本身尚未存储 frame 名称，后续加载地图时必须与 summary.json/本说明一起确认来源。**
-正式 navigation 接入需要明确地图坐标、定位输出与目标点的坐标关系；不能直接把 raw odom 的位置用于 corrected 地图。
+SDK 4.0 起接入独立 lidar-map 和完整 TF：raw odom 与 corrected pose 分开输入，地图显式标记 map 坐标。
+`--dataset corrected` 回放匹配的 910 帧，`--dataset tf` 回放全部原始扫描并稀疏校正；两者通过 lidar-map 计算 T_map_odom。
+具体运行、时间有效性和 RFGRID2 兼容说明见 [TF 数据链路](../../docs/transforms.md)。
+下面保留的是前一轮参考地图验收数值；旧输出 RFGRID1 没有 map 标签，后续应重新生成，不能混用原始 odom 坐标。
 
 本次输出：
 - `final.rfgrid`：前 909 帧固定结果；`live.rfgrid`：包含全部 910 帧，建议后续规划测试读取这一份。

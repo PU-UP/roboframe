@@ -4,6 +4,7 @@
 #include <map_server/file_map_component.hpp>
 #include <map_updater/occupancy_map_component.hpp>
 #include <odom/passthrough_odom_component.hpp>
+#include <lidar_map/recorded_lidar_map_component.hpp>
 #include <planner/read_only_planner_component.hpp>
 #include <deque>
 
@@ -19,6 +20,7 @@ struct RobotIntegration::Impl {
     void SnapshotMap(const std::string& name); // Inspection checkpoint; does not finish mapping.
     void LoadMap(const std::string& name);
     void PushOdometry(const TimedPose2D& pose);
+    void PushMapReference(const MapPose2D& pose);
     void PushScan(roboframe::Scan2DPtr scan);
     void Shutdown();
     void RouteOdometry(const TimedPose2D& pose);
@@ -29,9 +31,15 @@ struct RobotIntegration::Impl {
     DataFlowStatus Resources() const;
     PoseBuffer pose_buffer_;
     odom::PassthroughOdomComponent odometry_;
+    lidar_map::RecordedLidarMapComponent lidar_map_;
     map_updater::OccupancyMapComponent grid_;
     map_server::FileMapComponent store_;
     planner::ReadOnlyPlannerComponent planner_{std::chrono::milliseconds(5)};
+    const GridFrame frame_;
+    const std::int64_t max_correction_age_us_;
+    MapCorrection2D correction_;
+    bool has_correction_ = false;
+    TransformStatus2D transforms_;
     MappingStatus status_;
     GridSnapshot frozen_, live_;
     Scan2DPtr latest_scan_;

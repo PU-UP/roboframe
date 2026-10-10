@@ -83,6 +83,10 @@ used_rays / outside_rays / map_revision / drop_sync / drop_queue / drop_bounds /
 map_revision 指基准地图。RESOURCES 另行报告实时更新、块复制量及 planner 的读取/替换计数，
 避免后台更新改写已完成建图的成功/丢帧计数。WAIT_PLANNER 发布最新版本并等待读取结束，用于验收。
 
+## 完整 TF 接线
+新增 lidar-map、map 坐标地图和稀疏校正，当前协议与时序见 [坐标链路](transforms.md)。
+旧 raw 模式仍可复现；map 模式使用完整两级变换，不能将旧位姿示意混作当前接线。
+
 ## 后续规划用的参考地图
 新增 `--dataset corrected`，使用发布者配套校正日志，仍经过同一 IPC/component 链路。
 来源、下载指纹、坐标语义和规划使用边界见 [Intel 数据说明](../data/intel-lab/README.md)。
