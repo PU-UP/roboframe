@@ -1,0 +1,15 @@
+{
+  "clangd.path": "clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--compile-commands-dir=${workspaceFolder}/build-product",
+    "--query-driver=/usr/bin/c++,/usr/bin/g++,/usr/bin/clang++,/usr/bin/gcc",
+    "--header-insertion=never",
+    "--completion-style=detailed",
+    "--function-arg-placeholders"
+  ],
+  "clangd.checkUpdates": false,
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "C_Cpp.autocomplete": "disabled",
+  "C_Cpp.errorSquiggles": "disabled"
+}

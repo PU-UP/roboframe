@@ -1,5 +1,6 @@
 # Root build trees and installed/generated outputs.
 /build*/
+/compile_commands.json
 # Historical snapshot remains on disk; current source is tracked separately.
 /history/
 # Local tooling caches.

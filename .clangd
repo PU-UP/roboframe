@@ -1,0 +1,8 @@
+CompileFlags:
+  CompilationDatabase: build-product
+
+Index:
+  Background: Build
+
+Diagnostics:
+  UnusedIncludes: None
