@@ -1,20 +1,17 @@
 #pragma once
 #include <roboframe/component.hpp>
 #include <roboframe/geometry2d.hpp>
+#include <roboframe/scan2d.hpp>
 #include <roboframe/grid.hpp>
 #include <roboframe/version.hpp>
 #include <memory>
 #include <vector>
 
 namespace map_updater {
-constexpr roboframe::Version contract_version{1, 0, 0};
+constexpr roboframe::Version contract_version{2, 0, 0};
 roboframe::ComponentInfo GetComponentInfo();
-struct Point { double x, y; };
-// Finite hit endpoints in base coordinates, <=20m. Acquisition time shares the odom clock.
-// Immutable while retained. Driver/adapter owns calibration; this algorithm never mutates a scan.
-struct Scan { std::int64_t stamp_us; std::vector<Point> hits; };
-using ScanPtr = std::shared_ptr<const Scan>;
-void ValidateScan(const Scan& scan);
+// These implementation limits are deliberately separate from the shared scan contract.
+void ValidateScan(const roboframe::Scan2D& scan);
 struct Update { std::size_t used_rays = 0, outside_rays = 0; };
 class OccupancyMapComponent final : public roboframe::Component {
 public:
@@ -24,7 +21,7 @@ public:
     roboframe::Lifecycle lifecycle() const override { return lifecycle_; }
     void Reset();
     // Once per scan per cell; occupied endpoints override free rays within that scan.
-    Update PushScan(const ScanPtr& scan, const roboframe::TimedPose2D& odometry);
+    Update PushScan(const roboframe::Scan2DPtr& scan, const roboframe::TimedPose2D& odometry);
     roboframe::GridSnapshot Snapshot() const;
     std::uint64_t revision() const { return revision_; }
 private:

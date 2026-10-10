@@ -10,7 +10,7 @@ void RobotIntegration::RouteOdometry(const TimedPose2D& pose) {
     pose_buffer_.PushOdometry(pose);
     if (status_.phase == MappingPhase::mapping) Drain(false);
 }
-void RobotIntegration::PushScan(map_updater::ScanPtr scan) {
+void RobotIntegration::PushScan(roboframe::Scan2DPtr scan) {
     RequireActive();
     if (!scan) throw std::invalid_argument("null scan");
     map_updater::ValidateScan(*scan);

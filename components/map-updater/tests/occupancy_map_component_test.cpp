@@ -7,7 +7,7 @@ template<class F> void Reject(F f) {
 }
 int main() {
     map_updater::OccupancyMapComponent grid({10, 10, 1, 0, 0});
-    auto scan = std::make_shared<const map_updater::Scan>(map_updater::Scan{1, {{3, 0}}});
+    auto scan = std::make_shared<const roboframe::Scan2D>(roboframe::Scan2D{1, {{3, 0}}});
     Reject([&] { grid.PushScan(scan, {1, {1.5, 1.5, 0}}); });
     grid.Activate();
     grid.Reset();
@@ -18,23 +18,23 @@ int main() {
     Check(empty->cells[14] == 205 && empty->revision == 0);
     Check(scan->hits[0].x == 3);
     Reject([&] { grid.PushScan(scan, {1, {}}); });
-    auto second = std::make_shared<const map_updater::Scan>(map_updater::Scan{2, {{3, 0}}});
+    auto second = std::make_shared<const roboframe::Scan2D>(roboframe::Scan2D{2, {{3, 0}}});
     Reject([&] { grid.PushScan(second, {3, {}}); });
     Reject([&] { grid.PushScan(second, {2, {-2, 0, 0}}); });
     Check(grid.revision() == 1);
-    auto invalid = std::make_shared<const map_updater::Scan>(map_updater::Scan{2, {{3, 0}, {30, 0}}});
+    auto invalid = std::make_shared<const roboframe::Scan2D>(roboframe::Scan2D{2, {{3, 0}, {30, 0}}});
     Reject([&] { grid.PushScan(invalid, {2, {1.5, 1.5, 0}}); });
     Check(grid.revision() == 1);
     const auto outside = grid.PushScan(second, {2, {9.5, 1.5, 0}});
     Check(outside.used_rays == 0 && outside.outside_rays == 1);
     grid.Reset();
-    auto crossing = std::make_shared<const map_updater::Scan>(
-        map_updater::Scan{3, {{3, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}}});
+    auto crossing = std::make_shared<const roboframe::Scan2D>(
+        roboframe::Scan2D{3, {{3, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}}});
     grid.PushScan(crossing, {3, {1.5, 1.5, 0}});
     const auto forward = grid.Snapshot();
     Check(forward->cells[14] == 0); // An observed endpoint wins over crossing rays in the same scan.
     grid.Reset();
-    auto reversed = std::make_shared<map_updater::Scan>(*crossing);
+    auto reversed = std::make_shared<roboframe::Scan2D>(*crossing);
     std::reverse(reversed->hits.begin(), reversed->hits.end());
     grid.PushScan(reversed, {3, {1.5, 1.5, 0}});
     Check(grid.Snapshot()->cells == forward->cells);

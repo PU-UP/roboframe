@@ -7,13 +7,13 @@ void Check(bool ok) { if (!ok) throw std::runtime_error("integration check faile
 template<class F> void Reject(F f) {
     bool caught = false; try { f(); } catch (const std::exception&) { caught = true; } Check(caught);
 }
-map_updater::ScanPtr Scan(std::int64_t t) {
-    return std::make_shared<const map_updater::Scan>(map_updater::Scan{t, {{2, 0}}});
+roboframe::Scan2DPtr Scan(std::int64_t t) {
+    return std::make_shared<const roboframe::Scan2D>(roboframe::Scan2D{t, {{2, 0}}});
 }
 int main() {
     char directory[] = "/tmp/roboframe-mapping-XXXXXX";
     Check(::mkdtemp(directory) != nullptr);
-    roboframe::RobotIntegration integration({20, 20, 1, -5, -5}, directory, {512, 100});
+    roboframe::RobotIntegration integration({{20, 20, 1, -5, -5}, 100}, directory);
     integration.PushScan(Scan(0)); // Data outside a session is ignored, not retroactively mapped.
     Check(integration.mapping_status().ignored == 1);
     integration.PushOdometry({0, {}});

@@ -3,12 +3,12 @@
 #include <stdexcept>
 
 namespace roboframe {
-RobotIntegration::RobotIntegration(GridSpec spec, std::string directory, roboframe::PoseBufferConfig config)
-    : pose_buffer_(config), odometry_([this](const TimedPose2D& pose) {
+RobotIntegration::RobotIntegration(MappingOptions options, std::string directory)
+    : pose_buffer_({512, options.max_pose_gap_us}), odometry_([this](const TimedPose2D& pose) {
           RouteOdometry(pose);
-      }), grid_(spec), store_(std::move(directory)) {
+      }), grid_(options.grid), store_(std::move(directory)) {
     CheckCompatibility(odom::GetComponentInfo(), Version{1, 0, 0});
-    CheckCompatibility(map_updater::GetComponentInfo(), Version{1, 0, 0});
+    CheckCompatibility(map_updater::GetComponentInfo(), Version{2, 0, 0});
     CheckCompatibility(map_server::GetComponentInfo(), Version{1, 0, 0});
     // The only potentially failing activation comes first; later activations allocate no resources.
     store_.Activate();

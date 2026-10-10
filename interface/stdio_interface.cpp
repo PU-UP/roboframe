@@ -1,4 +1,6 @@
 #include "interface/stdio_interface.hpp"
+#include <roboframe/mapping.hpp>
+#include <roboframe/scan2d.hpp>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -24,11 +26,11 @@ void End(std::istream& input) {
     std::string extra;
     if (input >> extra) throw std::invalid_argument("unexpected argument");
 }
-const char* MappingPhaseName(RobotIntegration::MappingPhase phase) {
+const char* MappingPhaseName(MappingPhase phase) {
     switch (phase) {
-        case RobotIntegration::MappingPhase::idle: return "idle";
-        case RobotIntegration::MappingPhase::mapping: return "mapping";
-        case RobotIntegration::MappingPhase::ready: return "ready";
+        case MappingPhase::idle: return "idle";
+        case MappingPhase::mapping: return "mapping";
+        case MappingPhase::ready: return "ready";
     }
     return "unknown";
 }
@@ -61,16 +63,16 @@ bool StdioInterface::Dispatch(const std::string& line) {
     }
     if (command == "CONFIG") {
         if (integration_) throw std::logic_error("already configured");
-        GridSpec spec;
+        MappingOptions options;
+        auto& spec = options.grid;
         spec.width = static_cast<std::uint32_t>(Unsigned(input, 4096));
         spec.height = static_cast<std::uint32_t>(Unsigned(input, 4096));
         spec.resolution = Number(input);
         spec.origin_x = Number(input);
         spec.origin_y = Number(input);
-        roboframe::PoseBufferConfig config;
-        config.max_gap_us = static_cast<std::int64_t>(Unsigned(input, 10000000));
+        options.max_pose_gap_us = static_cast<std::int64_t>(Unsigned(input, 10000000));
         End(input);
-        integration_ = std::make_unique<RobotIntegration>(spec, map_directory_, config);
+        integration_ = std::make_unique<RobotIntegration>(options, map_directory_);
     } else {
         if (!integration_) throw std::logic_error("CONFIG required");
         if (command == "BEGIN") {
@@ -86,7 +88,7 @@ bool StdioInterface::Dispatch(const std::string& line) {
             End(input);
             integration_->PushOdometry(pose);
         } else if (command == "SCAN") {
-            auto scan = std::make_shared<map_updater::Scan>();
+            auto scan = std::make_shared<roboframe::Scan2D>();
             scan->stamp_us = static_cast<std::int64_t>(Unsigned(input));
             const auto count = Unsigned(input, 2048);
             scan->hits.reserve(count);

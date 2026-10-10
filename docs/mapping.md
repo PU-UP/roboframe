@@ -9,8 +9,8 @@ flowchart LR
     I --> N[RobotIntegration]
     N --> O[PassthroughOdomComponent]
     O -->|TimedPose2D 同步输出| D[integration 数据流和 PoseBuffer]
-    N -->|只读 Scan| D
-    D -->|同时间戳 Scan + Pose| U[OccupancyMapComponent]
+    N -->|只读 Scan2D| D
+    D -->|同时间戳 Scan2D + Pose| U[OccupancyMapComponent]
     N -->|快照和地图名| M[FileMapComponent]
     U -->|只读 GridSnapshot| N
 ~~~
@@ -23,10 +23,11 @@ flowchart LR
 | integration/data_flow.cpp | 转发数据、等待同步、调用地图更新 |
 | integration/pose_buffer.hpp | integration 私有缓存工具，没有组件生命周期 |
 | integration/mapping_flow.cpp | StartMapping、FinishMapping、CancelMapping、地图操作 |
-| components/odom/include/odom/passthrough_odom_component.hpp | 原始位姿输入输出契约与组件 |
-| components/map-updater/include/map_updater/occupancy_map_component.hpp | Scan、更新结果、占据图组件 |
+| components/odom/include/odom/passthrough_odom_component.hpp | 透传位姿操作契约与组件；数据类型在 SDK |
+| components/map-updater/include/map_updater/occupancy_map_component.hpp | 更新结果、组件输入策略和占据图组件 |
 | components/map-server/include/map_server/file_map_component.hpp | 地图保存和读取组件 |
-| sdk/include/roboframe/geometry2d.hpp / grid.hpp | 跨模块位姿和只读地图类型 |
+| sdk/include/roboframe/geometry2d.hpp / grid.hpp / scan2d.hpp | 跨模块位姿、只读地图与扫描类型 |
+| sdk/include/roboframe/mapping.hpp | interface 使用的 MappingOptions、MappingStatus 和 MappingPhase |
 
 数据入口与产品流程在一个 integration 中，但分开实现。
 Continuous odom 不使用 Action 状态。建图的 idle/mapping/ready 属于产品会话；
@@ -80,8 +81,13 @@ SHA256：449a9813e9709b6fd053ba0d006ea69c5f4485ba08dd021448e653e3af2e6ff9。
 
 180 束角度沿用 [GMapping 旧 CARMEN 读取实现](https://github.com/ros-perception/openslam_gmapping/blob/master/log/carmenconfiguration.cpp)：
 -90..-1,+1..+90 度。该旧日志没有完整传感器标定元数据，因此这不是重新标定。
-过滤 0.01m 以下和 20m 以上读数（无返回不当作障碍点）；本数据的 laser/base 位姿相同，
+过滤小于 0.01m 和大于等于 20m 的读数（无返回不当作障碍点）；本数据的 laser/base 位姿相同，
 非零外参在适配层明确拒绝，不能直接拿到其他设备上使用。
+
+20 米过滤只删除读数，不把远点裁剪成 20 米障碍，也不移动保留点；已有回归测试验证这一点。
+它会减少观测覆盖，不能仅凭这个阈值解释坐标重叠。错误坐标系、重复变换或忽略非零外参
+确实可能造成错图；当前数据的同帧 laser/base 位姿相同，单帧投影检查也通过，
+所以目前没有证据把上述 Scan2D 表达方式认定为重叠主因。全局重叠仍未解决，按用户要求暂停。
 
 修复的 occ 问题：原来每条射线立即更新，同一帧里的空闲射线可反复擦除已命中的格。
 现在每帧每格只更新一次，占据优先，与射线排列顺序无关。
@@ -110,3 +116,5 @@ FileMapComponent 保留原 RFGRID1 格式与校验和，可读取旧地图；
 文件 fsync 不等于目录 fsync，仍不承诺断电持久化。
 包名和公开类名已改变，应使用新的构建/安装前缀，勿混用旧头文件和旧库。
 真实异步图像/模型融合不在本次实现范围。
+
+类型归属与 SDK 扩展规则见 [SDK 说明](../sdk/README.md)；所有延期项见 [统一待办](../TODO.md)。

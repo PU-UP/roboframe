@@ -20,7 +20,8 @@ tests/                                 产品流程、IPC、独立交付验证
 ~~~
 
 每个 component 只依赖 SDK，不包含 integration 或其他组件头文件。
-公开数据和组件声明集中在具名头文件；当前无需额外 contract.hpp。
+跨 interface 边界的自定义数据统一定义在 SDK；组件专有配置/局部结果与声明集中在具名组件头文件，
+当前无需额外 contract.hpp。SDK 的准入规则与未来产品分区见 [SDK 说明](sdk/README.md)。
 未来 DRComponent 可放在 odom/dr_component.hpp 和 src/dr_component.cpp。
 多个实现真正共享协议时，再提取 odom 自己的契约。
 具体实现由 integration 静态装配，没有动态插件或实现注册框架。
@@ -75,6 +76,9 @@ CMake 监听 VERSION 变化，自动更新编译元数据；源码变动仍由�
 SDK 升级不要求机械修改组件 VERSION；组件编译时自动记录 SDK 版本。
 公开语义变化时调整头文件的 contract_version，重大不兼容改 major。
 启动前核对 SDK 和契约，不兼容拒绝启动。版本号不能自动证明 C++ ABI 兼容。
+当前产品要求 SDK 1.2、MapUpdater 2.x；Odom、MapServer 契约仍为 1.x。
 [SDK 规则](sdk/README.md)。
 
 当前串行调用、静态链接；没有增加 BT、线程池、动态插件或 ARM 工具链。
+
+后续接口隔离、多产品布局、BT、异步数据、ROS/DDS、ARM 和工具演进统一记录在 [TODO.md](TODO.md)。

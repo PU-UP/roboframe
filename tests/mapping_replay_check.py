@@ -36,7 +36,12 @@ class DatasetAdapter(unittest.TestCase):
         self.assertEqual(replay.parse('# comment', 1), None)
         ranges = [1] * 180
         ranges[0:3] = [0, 81.83, 20]
-        self.assertEqual(replay.parse(self.scan(ranges), 1)['filtered'], 3)
+        filtered = replay.parse(self.scan(ranges), 1)
+        self.assertEqual(filtered['filtered'], 3)
+        full = replay.parse(self.scan(), 1)
+        self.assertEqual(filtered['hits'], full['hits'][3:])
+        self.assertEqual(filtered['pose'], full['pose'])
+        self.assertEqual(filtered['stamp'], full['stamp'])
         for line in [self.scan(pose=[1, 0, 0, 0, 0, 0]), self.scan([float('nan')] * 180),
                      self.scan([-1] * 180), 'FLASER 180 1 2', 'ODOM nan 0 0 0 0 0 1 host 0']:
             with self.assertRaises(ValueError):
