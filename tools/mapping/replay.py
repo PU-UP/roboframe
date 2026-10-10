@@ -14,7 +14,7 @@ import subprocess
 import zlib
 
 ROOT = Path(__file__).resolve().parents[2]
-DATA = ROOT / 'history/2026-10-09-full-prototype/data/intel-lab/intel.log.gz'
+DATA = ROOT / 'data/intel-lab/intel.log.gz'
 SHA256 = '449a9813e9709b6fd053ba0d006ea69c5f4485ba08dd021448e653e3af2e6ff9'
 DATASETS = {
     'raw': dict(path=DATA, sha256=SHA256,

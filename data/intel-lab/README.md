@@ -3,11 +3,11 @@
 ## 来源与用途
 发布页：[StachnissLab / Pre-2014 Robotics 2D-Laser Datasets](https://www.ipb.uni-bonn.de/datasets/index.html)。
 Intel Research Lab 原始日志由 **Dirk Haehnel** 提供，使用时应致谢。发布页分别提供 raw-log、corrected-log 和 RBPF-log。
-这里不额外授予数据许可；下载文件只保留本地，不提交 Git，源码记录来源和 SHA-256。
+两份压缩日志随仓库提交，作为 example 数据；保留原作者归属、来源和 SHA-256，不额外授予数据许可。
 
 | 数据 | 本地位置 | 内容与用途 |
 |---|---|---|
-| raw-log | history/2026-10-09-full-prototype/data/intel-lab/intel.log.gz | 13,631 帧扫描与原始估计位姿；保留为链路、资源和未来 SLAM 输入验证 |
+| raw-log | data/intel-lab/intel.log.gz | 13,631 帧扫描与原始估计位姿；保留为链路、资源和未来 SLAM 输入验证 |
 | corrected-log | data/intel-lab/intel.gfs.log.gz | 发布者校正后的 910 帧配对扫描/位姿；生成后续规划用的离线参考地图 |
 
 corrected-log 不是本项目运行 SLAM 的结果，不是测量真值。910 个完整量程数组均在 raw-log 中找到唯一、完全相同的量测。
@@ -15,7 +15,14 @@ corrected-log 不是本项目运行 SLAM 的结果，不是测量真值。910 �
 所以本次改善来自位姿，而非缩短到前几百帧、改变激光角度或隐藏后续数据。
 发布页没有提供误差界或具体生成参数，本项目不推断其精度等级。
 
-## 下载与复现
+## 校验与复现
+两份数据已随仓库提供，无需另行下载。可以从仓库根目录校验：
+
+~~~sh
+(cd data/intel-lab && sha256sum -c SHA256SUMS)
+~~~
+
+以下下载方式仅用于恢复缺失的 corrected 文件。
 旧服务器的 HTTPS 端口不可用；以下 HTTP 链接来自发布页。文件通过重定向下载，指纹用于锁定本次验收版本，
 不是发布者签名；下载到 .part，校验后再放入正式位置。已存在文件时不必重新下载。
 
@@ -42,7 +49,7 @@ python3 tests/intel_reference_check.py build-product/corrected-reference/live.rf
 - 只使用同一 FLASER 中的 180 个量程和配套位姿；不要按帧号或浮点时间戳把 raw/corrected 两文件硬拼。
 - corrected 中两组位姿字段相等，均视作发布者参考坐标系下的已校正位姿；不能因字段叫 odom_x 就当成原始轮速里程计。
 - corrected 的独立 ODOM 流不参与建图，其中发现 22 条不满足微秒时间约束的记录；不对无关记录伪造时间修复。
-- 910 帧 FLASER 时间戳唯一，有 4 次倒序，按它自己的时间戳排序，并以首帧为零点；不借用原始日志时间轴。
+- corrected 的 910 帧 FLASER 时间戳唯一，有 4 次倒序。接入 TF 时以完整量程唯一匹配到 raw 帧，使用 raw 采集时间；原 corrected 时间保留用于追溯，不能直接按两个日志的时间戳配对。
 - x/y/range 使用米，yaw 使用弧度。激光/base 位姿字段相等是当前适配前提；非零外参仍明确拒绝。
 - 180 束采用 [GMapping 旧 CARMEN 读取代码](https://github.com/ros-perception/openslam_gmapping/blob/master/log/carmenconfiguration.cpp) 中的
   `-90..-1,+1..+90` 度约定；此次查证与现有代码一致，未因外观而换角度模型。

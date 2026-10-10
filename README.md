@@ -1,6 +1,6 @@
 # roboframe
 C++14 的 interface → integration → component 骨架。只有一个产品进程 robot_runtime；
-建图是 RobotIntegration 中的一项流程。本地 Git，无 remote/submodule。
+建图是 RobotIntegration 中的一项流程。主仓库：[PU-UP/roboframe](https://github.com/PU-UP/roboframe)，当前不使用 submodule。
 history/ 和 build*/ 中旧数据、产物不参与构建，也不代表当前实现。
 
 ~~~text
@@ -76,10 +76,10 @@ integration 按产品选择并接线，下游消费约定的位姿输出。
 cmake -S . -B build-product -DCMAKE_BUILD_TYPE=Release
 cmake --build build-product -j4
 ctest --test-dir build-product --output-on-failure
-python3 tools/mapping/replay.py --scans 0 --finish-after 12267 \
+python3 tools/mapping/replay.py --dataset tf --scans 0 --finish-after 12267 \
   --output build-product/full-result
 ~~~
-输出目录必须不存在，防止覆盖地图。回放需要 history 中的 intel.log.gz。
+输出目录必须不存在，防止覆盖地图。两份示例日志已包含在 data/intel-lab/，无需 history 目录；来源和校验方式见 [数据说明](data/intel-lab/README.md)。
 查看输出 replay.html；[链路、协议与地图验证](docs/mapping.md)。
 FINISH 保存基准快照，之后 scan 继续更新实时地图。SAVE 保存基准，SNAPSHOT 保存当前地图；
 planner 读取共享 scan 和地图。详见 [大数据共享与验收](docs/data-sharing.md)。

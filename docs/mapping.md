@@ -93,7 +93,7 @@ map_revision 指基准地图。RESOURCES 另行报告实时更新、块复制量
 原始模式及历史结果保留；下节描述的是 raw 模式，corrected 模式不是原始 odom 或实测真值。
 
 ## 原始数据与地图验证
-使用 history/2026-10-09-full-prototype/data/intel-lab/intel.log.gz。
+使用 data/intel-lab/intel.log.gz。
 SHA256：449a9813e9709b6fd053ba0d006ea69c5f4485ba08dd021448e653e3af2e6ff9。
 
 该日志有独立 ODOM 与 FLASER 自带的原始 odom。回放使用后者原值，

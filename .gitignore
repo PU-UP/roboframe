@@ -8,6 +8,8 @@
 __pycache__/
 *.py[cod]
 
-# Downloaded reference datasets; provenance and hashes are tracked.
+# Keep example datasets; ignore other downloaded archives.
 /data/**/*.gz
+!/data/intel-lab/intel.log.gz
+!/data/intel-lab/intel.gfs.log.gz
 /data/**/*.part
