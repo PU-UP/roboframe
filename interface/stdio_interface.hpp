@@ -1,20 +1,22 @@
 #pragma once
+#include "integration/robot_integration.hpp"
 #include <iosfwd>
+#include <memory>
 #include <string>
-#include "integration/demo_integration.hpp"
 
 namespace roboframe {
+// Line-oriented IPC; decoding and bounded input only, no mapping algorithm or product state.
 class StdioInterface {
 public:
-    StdioInterface(std::istream& input, std::ostream& output);
-    StdioInterface(const StdioInterface&) = delete;
-    StdioInterface& operator=(const StdioInterface&) = delete;
+    StdioInterface(std::istream& input, std::ostream& output, std::string map_directory);
     void Run();
 private:
     bool Dispatch(const std::string& line);
-    void Send(const std::string& line);
+    void Send(const std::string& message);
+    std::string Status() const;
     std::istream& input_;
     std::ostream& output_;
-    DemoIntegration integration_;
+    std::string map_directory_;
+    std::unique_ptr<RobotIntegration> integration_;
 };
 } // namespace roboframe

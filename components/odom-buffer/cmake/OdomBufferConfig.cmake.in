@@ -1,6 +1,0 @@
-@PACKAGE_INIT@
-include(CMakeFindDependencyMacro)
-if(NOT TARGET Roboframe::sdk)
-    find_dependency(RoboframeSDK 1.1 CONFIG)
-endif()
-include("${CMAKE_CURRENT_LIST_DIR}/OdomBufferTargets.cmake")

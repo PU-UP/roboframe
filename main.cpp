@@ -1,18 +1,18 @@
+#include "interface/stdio_interface.hpp"
 #include <roboframe/log.hpp>
 #include <csignal>
-#include <exception>
 #include <iostream>
-#include "interface/stdio_interface.hpp"
 
-int main() {
+int main(int argc, char** argv) {
     try {
+        if (argc != 2) throw std::invalid_argument("usage: robot_runtime <existing-map-directory>");
 #ifdef SIGPIPE
         std::signal(SIGPIPE, SIG_IGN);
 #endif
-        roboframe::StdioInterface interface(std::cin, std::cout);
+        roboframe::StdioInterface interface(std::cin, std::cout, argv[1]);
         interface.Run();
     } catch (const std::exception& error) {
-        ROBO_LOG_ERROR("host") << error.what();
+        ROBO_LOG_ERROR("mapping-host") << error.what();
         return 1;
     }
 }

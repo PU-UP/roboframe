@@ -1,124 +1,146 @@
-#include <roboframe/log.hpp>
 #include "interface/stdio_interface.hpp"
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 
 namespace roboframe {
 namespace {
-const char* StateName(TaskState state) {
-    switch (state) {
-    case TaskState::idle: return "idle";
-    case TaskState::running: return "running";
-    case TaskState::canceling: return "canceling";
-    case TaskState::succeeded: return "succeeded";
-    case TaskState::failed: return "failed";
-    case TaskState::canceled: return "canceled";
-    }
-    throw std::logic_error("unknown task state");
-}
-std::uint64_t Unsigned(std::istringstream& input) {
+std::uint64_t Unsigned(std::istream& input, std::uint64_t maximum = std::numeric_limits<std::int64_t>::max()) {
     std::string token;
-    if (!(input >> token) || token.find_first_not_of("0123456789") != std::string::npos)
+    if (!(input >> token) || token.empty() || token.size() > 20 ||
+        token.find_first_not_of("0123456789") != std::string::npos)
         throw std::invalid_argument("expected unsigned integer");
-    return std::stoull(token);
+    const auto value = std::stoull(token);
+    if (value > maximum) throw std::invalid_argument("integer exceeds limit");
+    return value;
 }
-void End(std::istringstream& input) {
+double Number(std::istream& input) {
+    double value;
+    if (!(input >> value) || !std::isfinite(value)) throw std::invalid_argument("expected finite number");
+    return value;
+}
+void End(std::istream& input) {
     std::string extra;
     if (input >> extra) throw std::invalid_argument("unexpected argument");
 }
+const char* MappingPhaseName(RobotIntegration::MappingPhase phase) {
+    switch (phase) {
+        case RobotIntegration::MappingPhase::idle: return "idle";
+        case RobotIntegration::MappingPhase::mapping: return "mapping";
+        case RobotIntegration::MappingPhase::ready: return "ready";
+    }
+    return "unknown";
 }
-
-StdioInterface::StdioInterface(std::istream& input, std::ostream& output)
-    : input_(input), output_(output) {
-    integration_.SetCallbacks(
-        [this](const sample_accumulator::Feedback& f) {
-            Send("FEEDBACK " + std::to_string(f.goal_id) + " " +
-                 std::to_string(f.count) + " " + std::to_string(f.sum));
-        },
-        [this](const sample_accumulator::Result& r) {
-            Send("RESULT " + std::to_string(r.goal_id) + " " + StateName(r.state) + " " +
-                 std::to_string(r.count) + " " + std::to_string(r.sum) + " " +
-                 (r.error == sample_accumulator::Error::none ? "none" : "overflow"));
-        });
 }
-
-void StdioInterface::Send(const std::string& line) {
-    output_ << line << std::endl;
+StdioInterface::StdioInterface(std::istream& input, std::ostream& output, std::string directory)
+    : input_(input), output_(output), map_directory_(std::move(directory)) {}
+void StdioInterface::Send(const std::string& message) {
+    output_ << message << std::endl;
     if (!output_) throw std::runtime_error("output channel closed");
 }
-
+std::string StdioInterface::Status() const {
+    const auto& s = integration_->mapping_status();
+    const auto map = integration_->map();
+    std::ostringstream out;
+    out << "STATUS " << MappingPhaseName(s.phase) << ' ' << s.session << ' ' << s.received << ' '
+        << s.integrated << ' ' << s.ignored << ' ' << s.dropped << ' ' << integration_->pending()
+        << ' ' << s.used_rays << ' ' << s.outside_rays << ' ' << (map ? map->revision : 0)
+        << ' ' << s.drop_sync << ' ' << s.drop_queue << ' ' << s.drop_bounds << ' ' << s.drop_cancel;
+    return out.str();
+}
 bool StdioInterface::Dispatch(const std::string& line) {
-    ROBO_LOG_INFO("interface") << "received: " << line;
     std::istringstream input(line);
-    std::string op;
-    input >> op;
-    if (op == "GOAL") {
-        const auto id = Unsigned(input);
-        const auto count = Unsigned(input);
+    std::string command;
+    if (!(input >> command)) throw std::invalid_argument("empty command");
+    if (command == "QUIT") {
         End(input);
-        integration_.Submit({id, count});
-        Send("ACCEPTED " + std::to_string(id));
-    } else if (op == "SAMPLE") {
-        std::int64_t value = 0;
-        if (!(input >> value)) throw std::invalid_argument("expected int64 sample");
+        if (integration_) integration_->Shutdown();
+        Send("BYE");
+        return false;
+    }
+    if (command == "CONFIG") {
+        if (integration_) throw std::logic_error("already configured");
+        GridSpec spec;
+        spec.width = static_cast<std::uint32_t>(Unsigned(input, 4096));
+        spec.height = static_cast<std::uint32_t>(Unsigned(input, 4096));
+        spec.resolution = Number(input);
+        spec.origin_x = Number(input);
+        spec.origin_y = Number(input);
+        roboframe::PoseBufferConfig config;
+        config.max_gap_us = static_cast<std::int64_t>(Unsigned(input, 10000000));
         End(input);
-        integration_.PushSample({value});
-    } else if (op == "CANCEL") {
-        const auto id = Unsigned(input);
-        End(input);
-        integration_.Cancel(id);
+        integration_ = std::make_unique<RobotIntegration>(spec, map_directory_, config);
     } else {
-        End(input);
-        if (op == "ACTIVATE") {
-            integration_.Activate();
-            Send("OK ACTIVATE");
-        } else if (op == "DEACTIVATE") {
-            integration_.Deactivate();
-            Send("OK DEACTIVATE");
-        } else if (op == "STATUS") {
-            const auto task = integration_.status();
-            Send(std::string("STATUS ") +
-                 (integration_.lifecycle() == Lifecycle::active ? "active " : "inactive ") +
-                 std::to_string(task.id) + " " + StateName(task.state));
-        } else if (op == "QUIT") {
-            return false;
+        if (!integration_) throw std::logic_error("CONFIG required");
+        if (command == "BEGIN") {
+            const auto id = Unsigned(input);
+            End(input);
+            integration_->StartMapping(id);
+        } else if (command == "ODOM") {
+            TimedPose2D pose;
+            pose.stamp_us = static_cast<std::int64_t>(Unsigned(input));
+            pose.pose.x = Number(input);
+            pose.pose.y = Number(input);
+            pose.pose.yaw = Number(input);
+            End(input);
+            integration_->PushOdometry(pose);
+        } else if (command == "SCAN") {
+            auto scan = std::make_shared<map_updater::Scan>();
+            scan->stamp_us = static_cast<std::int64_t>(Unsigned(input));
+            const auto count = Unsigned(input, 2048);
+            scan->hits.reserve(count);
+            for (std::size_t i = 0; i < count; ++i) {
+                const double x = Number(input), y = Number(input);
+                scan->hits.push_back({x, y});
+            }
+            End(input);
+            integration_->PushScan(std::move(scan));
+        } else if (command == "SAVE" || command == "SNAPSHOT" || command == "LOAD") {
+            std::string name;
+            if (!(input >> name)) throw std::invalid_argument("expected map name");
+            End(input);
+            if (command == "SAVE") integration_->SaveMap(name);
+            else if (command == "LOAD") integration_->LoadMap(name);
+            else integration_->SnapshotMap(name);
         } else {
-            throw std::invalid_argument("unknown command");
+            End(input);
+            if (command == "FINISH") integration_->FinishMapping();
+            else if (command == "CANCEL") integration_->CancelMapping();
+            else if (command == "STATUS") { Send(Status()); return true; }
+            else throw std::invalid_argument("unknown command");
         }
     }
+    Send("OK " + command);
     return true;
 }
-
 void StdioInterface::Run() {
-    Send("READY");
+    Send("READY roboframe-v1");
     std::string line;
     bool oversized = false;
     char ch;
     while (input_.get(ch)) {
         if (ch != '\n') {
-            if (line.size() < 128) line.push_back(ch);
+            if (line.size() < 65536) line.push_back(ch);
             else oversized = true;
             continue;
         }
-        bool keep_running = true;
+        bool running = true;
         try {
-            if (oversized) throw std::invalid_argument("line exceeds 128 bytes");
-            keep_running = Dispatch(line);
-        } catch (const std::logic_error& error) {
+            if (oversized) throw std::invalid_argument("line exceeds 65536 bytes");
+            running = Dispatch(line);
+        } catch (const std::bad_alloc&) {
+            throw; // Memory exhaustion is not a recoverable malformed request.
+        } catch (const std::exception& error) {
+            if (!output_) throw; // Broken IPC cannot be reported back on the same channel.
             Send(std::string("ERROR ") + error.what());
         }
         line.clear();
         oversized = false;
-        if (!keep_running) {
-            integration_.Shutdown();
-            Send("BYE");
-            return;
-        }
+        if (!running) return;
     }
-    // A pipe closed mid-command must not execute a partial request.
+    if (integration_) integration_->Shutdown();
     if (!line.empty() || oversized) Send("ERROR incomplete line");
-    integration_.Shutdown();
     if (input_.bad()) throw std::runtime_error("input channel failed");
 }
 } // namespace roboframe

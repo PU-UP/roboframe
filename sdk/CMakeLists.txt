@@ -39,4 +39,3 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/generated/roboframe/sdk_version.hpp
 install(EXPORT RoboframeSDKTargets NAMESPACE Roboframe:: DESTINATION ${package_dir})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/RoboframeSDKConfig.cmake
     ${CMAKE_CURRENT_BINARY_DIR}/RoboframeSDKConfigVersion.cmake DESTINATION ${package_dir})
-install(DIRECTORY templates/ DESTINATION ${CMAKE_INSTALL_DATADIR}/roboframe/templates)

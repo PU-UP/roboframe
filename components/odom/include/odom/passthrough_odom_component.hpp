@@ -1,0 +1,26 @@
+#pragma once
+#include <roboframe/component.hpp>
+#include <roboframe/geometry2d.hpp>
+#include <roboframe/version.hpp>
+#include <functional>
+
+namespace odom {
+constexpr roboframe::Version contract_version{1, 0, 0};
+roboframe::ComponentInfo GetComponentInfo();
+// Input/output: acquisition timestamp in microseconds, T_odom_base in metres/radians.
+// Output is synchronous; its reference lasts only for this call. Serialize all calls.
+// The sink must not reenter/destroy this component. If it throws, the sample stays consumed.
+class PassthroughOdomComponent final : public roboframe::Component {
+public:
+    using Output = std::function<void(const roboframe::TimedPose2D&)>;
+    explicit PassthroughOdomComponent(Output output);
+    void Activate() override { lifecycle_ = roboframe::Lifecycle::active; }
+    void Deactivate() override { lifecycle_ = roboframe::Lifecycle::inactive; last_stamp_us_ = -1; }
+    roboframe::Lifecycle lifecycle() const override { return lifecycle_; }
+    void PushOdometry(const roboframe::TimedPose2D& pose);
+private:
+    Output output_;
+    roboframe::Lifecycle lifecycle_ = roboframe::Lifecycle::inactive;
+    std::int64_t last_stamp_us_ = -1;
+};
+} // namespace odom

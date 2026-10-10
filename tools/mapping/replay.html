@@ -28,10 +28,10 @@ a{color:#1664ad}.files{display:flex;gap:14px;margin:18px 0}.warning{font-size:12
 <p id="snapshot" class="muted"></p>
 </section><aside class="panel">
 <h2>链路与验收结果</h2><div class="stage" id="stage"></div>
-<p class="muted">Python 日志适配 → 管道 IPC → interface → integration<br>odom-buffer 时间匹配 → occupancy-grid → map-store</p>
+<p class="muted">Python 日志适配 → 管道 IPC → interface → integration<br>odom 输出 → integration 时间匹配 → map-updater → map-server</p>
 <dl id="stats"></dl>
 <div class="files"><a href="summary.json">验收数据</a><a href="final.png">最终地图</a><a href="mapping-events.jsonl">指令回执</a></div>
-<p class="warning">使用原始里程计估计，未实现扫描匹配或回环优化。墙体重复、轨迹漂移应视为算法边界，不能解读为定位精度达标。结束建图不代表机器人已停止运动。</p>
+<p class="warning">使用每条 FLASER 记录配套的原始位姿，未修改轨迹。冻结和重载通过只表示业务链路通过；地图几何质量需另行评估。结束建图不代表机器人已停止运动。</p>
 </aside></div></main>
 <script>
 const report=__REPORT__, s=report.summary, timeline=document.getElementById('time');

@@ -60,11 +60,6 @@ function update() {
   byId("prefix-field").hidden = !plan.hasPackages;
   byId("prefix").value = state.packagePrefix;
   byId("tests").checked = state.tests;
-  byId("demo").checked = !plan.allPackage && state.demo;
-  byId("demo").disabled = plan.allPackage;
-  byId("demo-note").textContent = plan.allPackage ?
-    "安装包只提供库与头文件；主框架不会补编组件自测 main。勾选测试时仅运行主框架的 IPC 检查。" :
-    "组件独立 main 与主框架分开，可直接调试组件。测试选项控制 CMake 测试目标。";
   byId("sdk-source").textContent = plan.sdkSource === "SOURCE" ? "本地源码" : "同一套 SDK 安装包";
   byId("status").textContent = previewOnly ? "仅设计预览" : "现有 CMake 命令";
   byId("status").classList.toggle("future", previewOnly);
@@ -80,12 +75,12 @@ function update() {
     byId("notice").append(list);
   } else {
     byId("notice").textContent = plan.allPackage ?
-      "命令已映射到现有整体安装包模式。请先提供 SDK 与 SampleAccumulator 1.x 开发包；页面不检查包是否存在或兼容。" :
-      "命令已映射到当前源码构建。复制后在 WSL / Linux 的 roboframe 根目录执行；此页面没有执行构建。";
+      "请提供 SDK 1.1 与三个组件的开发包；页面不检查包是否存在或兼容。" :
+      "命令按各组件来源生成。在 WSL / Linux 的 roboframe 根目录执行；页面不执行构建，混合模式需要 SDK 安装包。";
   }
   byId("preview-label").textContent = previewOnly ? "待框架支持后再接入执行" : "在 roboframe 根目录运行";
   byId("commands").textContent = previewOnly ?
-    "已记录所选来源与目标平台。\n\n当前不生成混合来源或 ARM 构建命令。\n可导出配置意图，用于后续设计讨论。" : plan.commands.join("\n\n");
+    "已记录所选来源与目标平台。\n\n当前不生成尚未验证的 ARM 构建命令。\n可导出配置意图，用于后续设计讨论。" : plan.commands.join("\n\n");
   byId("copy").disabled = previewOnly;
   byId("intent").textContent = JSON.stringify(plan.intent, null, 2);
   byId("feedback").textContent = "";
@@ -105,7 +100,6 @@ byId("platform").addEventListener("change", event => {
 });
 byId("prefix").addEventListener("input", event => { state.packagePrefix = event.target.value; update(); });
 byId("tests").addEventListener("change", event => { state.tests = event.target.checked; update(); });
-byId("demo").addEventListener("change", event => { state.demo = event.target.checked; update(); });
 byId("reset").addEventListener("click", () => {
   state = initialState(catalog);
   renderComponents();

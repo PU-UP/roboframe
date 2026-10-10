@@ -18,7 +18,7 @@
     <div class="intro">
       <div><p class="eyebrow">开发配置</p><h1>只编译你正在改的部分。</h1>
         <p class="lead">选择组件来自源码还是安装包，查看它如何进入同一套 integration。</p></div>
-      <div class="scope"><span class="dot"></span> 当前支持整体来源切换<br><span>混合来源与 ARM 为设计预览</span></div>
+      <div class="scope"><span class="dot"></span> 当前支持逐组件来源切换<br><span>支持混合构建 · ARM 为设计预览</span></div>
     </div>
     <div class="workspace">
       <section class="configuration" aria-label="构建配置">
@@ -38,9 +38,8 @@
         </label>
         <div class="options">
           <label><input id="tests" type="checkbox"> 构建并运行测试</label>
-          <label><input id="demo" type="checkbox"> 构建组件独立 main</label>
         </div>
-        <p class="hint" id="demo-note"></p>
+        <p class="hint">组件测试是可直接运行的独立 main，无需 integration。</p>
       </section>
       <section class="preview" aria-label="配置预览">
         <div class="panel-head"><h2>构建预览</h2><span id="status" class="status"></span></div>

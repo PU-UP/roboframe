@@ -2,7 +2,6 @@
 """Replay archived Intel odometry/laser data through IPC; save, reload and inspect maps."""
 import argparse
 import base64
-import bisect
 from decimal import Decimal
 import gzip
 import hashlib
@@ -56,7 +55,7 @@ def parse(line, number):
     if not hits:
         raise ValueError('scan contains no usable hit')
     return dict(kind='scan', stamp=timestamp(fields[188]), hits=hits,
-                filtered=180 - len(hits), line=number)
+                filtered=180 - len(hits), pose=odom, line=number)
 
 
 def load(path):
@@ -120,7 +119,7 @@ class Host:
         self.process = subprocess.Popen([str(binary), str(directory)], stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, stderr=self.log, text=True, bufsize=1)
         try:
-            if self.receive() != 'READY mapping-v1':
+            if self.receive() != 'READY roboframe-v1':
                 raise RuntimeError('mapping host not ready')
         except Exception:
             self.close()
@@ -177,9 +176,11 @@ def run(args):
     gap_us = args.max_odom_gap_ms * 1000
     if not 1 <= args.max_odom_gap_ms <= 10000:
         raise ValueError('max-odom-gap-ms must be 1..10000')
-    cutoff = all_scans[count - 1]['stamp']
-    records = [r for r in records if r['stamp'] <= cutoff + gap_us and
-               (r['kind'] != 'scan' or r['stamp'] <= cutoff)]
+    selected = all_scans[:count]
+    records = []
+    for scan in selected:
+        records.append(dict(kind='odom', stamp=scan['stamp'], pose=scan['pose'], line=scan['line']))
+        records.append(scan)
     odometry = [r for r in records if r['kind'] == 'odom']
     if not odometry:
         raise ValueError('no odometry')
@@ -196,7 +197,6 @@ def run(args):
     frames, trajectory = [], []
     scan_number, finished = 0, False
     checkpoints = max(1, finish // 12)
-    odom_times = [r['stamp'] for r in odometry]
 
     def frame(name, number):
         grid = read_map(args.output / (name + '.rfgrid'))
@@ -230,16 +230,7 @@ def run(args):
             host.send('SCAN ' + str(t) + ' ' + str(len(record['hits'])) + ' ' +
                       ' '.join(format(v, '.12g') for point in record['hits'] for v in point), record)
             scan_number += 1
-            # Display independently interpolated ODOM, never FLASER's associated pose as input.
-            right = bisect.bisect_left(odom_times, record['stamp'])
-            pose = None
-            if right < len(odometry) and odom_times[right] == record['stamp']:
-                pose = odometry[right]['pose']
-            elif 0 < right < len(odometry) and odom_times[right] - odom_times[right-1] <= gap_us:
-                a, b = odometry[right-1], odometry[right]
-                fraction = (record['stamp'] - a['stamp']) / (b['stamp'] - a['stamp'])
-                pose = [a['pose'][i] + fraction * (b['pose'][i] - a['pose'][i]) for i in (0, 1)]
-            trajectory.append([t, pose[0], pose[1]] if pose is not None else [t, None, None])
+            trajectory.append([t, record['pose'][0], record['pose'][1]])
             if not finished and scan_number < finish and scan_number % checkpoints == 0:
                 if host.status()['integrated']:
                     name = f'progress-{scan_number:05d}'
@@ -278,6 +269,7 @@ def run(args):
         raise RuntimeError('map did not survive process restart')
     summary = dict(passed=True, dataset_sha256=SHA256, total_dataset_scans=len(all_scans),
                    replayed_scans=count, finish_after=finish, replayed_odom=len(odometry),
+                   pose_source='FLASER associated raw odometry; unchanged',
                    max_odom_gap_ms=args.max_odom_gap_ms, reordered_records=backwards, before=before, after=after,
                    saved_map_sha256=hashlib.sha256(original).hexdigest(),
                    frozen_equal=True, reloaded_equal=True,
@@ -296,14 +288,14 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data', type=Path, default=DATA)
-    parser.add_argument('--binary', type=Path, default=ROOT / 'build-mapping/mapping_runtime')
-    parser.add_argument('--output', type=Path, default=ROOT / 'build-mapping/result')
+    parser.add_argument('--binary', type=Path, default=ROOT / 'build-product/robot_runtime')
+    parser.add_argument('--output', type=Path, default=ROOT / 'build-product/result')
     parser.add_argument('--scans', type=int, default=3000, help='0 = full dataset')
     parser.add_argument('--finish-after', type=int)
     parser.add_argument('--max-odom-gap-ms', type=int, default=250)
     args = parser.parse_args()
     if not args.binary.is_file():
-        parser.error('build mapping_runtime first')
+        parser.error('build robot_runtime first')
     if args.output.exists():
         parser.error('output already exists; use a new --output directory to preserve previous maps')
     run(args)
