@@ -1,0 +1,12 @@
+#pragma once
+#include <cstdint>
+namespace roboframe {
+// Product resource diagnostics; values are counts/bytes, never ownership-bearing pointers.
+struct DataFlowStatus {
+    std::uint64_t shared_scans = 0, live_updates = 0, live_dropped = 0, publications = 0;
+    std::uint64_t copied_bytes = 0, map_bytes = 0, table_bytes = 0;
+    std::uint64_t planner_received = 0, planner_completed = 0, planner_replaced = 0;
+    std::uint64_t planner_pending = 0, planner_active = 0, planner_peak_retained = 0;
+    std::uint64_t planner_inconsistent = 0, planner_revision = 0;
+};
+} // namespace roboframe

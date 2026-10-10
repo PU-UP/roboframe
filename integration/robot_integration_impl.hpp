@@ -4,6 +4,7 @@
 #include <map_server/file_map_component.hpp>
 #include <map_updater/occupancy_map_component.hpp>
 #include <odom/passthrough_odom_component.hpp>
+#include <planner/read_only_planner_component.hpp>
 #include <deque>
 
 namespace roboframe {
@@ -23,12 +24,20 @@ struct RobotIntegration::Impl {
     void RouteOdometry(const TimedPose2D& pose);
     void Drain(bool finishing);
     void RequireActive() const;
+    void Publish(const Scan2DPtr& scan, bool force = false);
+    void WaitPlanner();
+    DataFlowStatus Resources() const;
     PoseBuffer pose_buffer_;
     odom::PassthroughOdomComponent odometry_;
     map_updater::OccupancyMapComponent grid_;
     map_server::FileMapComponent store_;
+    planner::ReadOnlyPlannerComponent planner_{std::chrono::milliseconds(5)};
     MappingStatus status_;
-    GridSnapshot frozen_;
+    GridSnapshot frozen_, live_;
+    Scan2DPtr latest_scan_;
+    DataFlowStatus resources_;
+    bool updating_ = false;
+    std::int64_t last_publication_us_ = -1;
     std::deque<roboframe::Scan2DPtr> pending_;
     std::int64_t last_scan_us_ = -1;
     bool active_ = false;

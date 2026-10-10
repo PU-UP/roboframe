@@ -62,6 +62,29 @@ bool StdioInterface::Dispatch(const std::string& line) {
         Send("BYE");
         return false;
     }
+    if (command == "RESOURCES") {
+        End(input);
+        const auto s = integration_.data_flow_status();
+        std::ostringstream out;
+        out << "RESOURCES";
+        out << " shared_scans=" << s.shared_scans;
+        out << " live_updates=" << s.live_updates;
+        out << " live_dropped=" << s.live_dropped;
+        out << " publications=" << s.publications;
+        out << " copied_bytes=" << s.copied_bytes;
+        out << " map_bytes=" << s.map_bytes;
+        out << " table_bytes=" << s.table_bytes;
+        out << " planner_received=" << s.planner_received;
+        out << " planner_completed=" << s.planner_completed;
+        out << " planner_replaced=" << s.planner_replaced;
+        out << " planner_pending=" << s.planner_pending;
+        out << " planner_active=" << s.planner_active;
+        out << " planner_peak_retained=" << s.planner_peak_retained;
+        out << " planner_inconsistent=" << s.planner_inconsistent;
+        out << " planner_revision=" << s.planner_revision;
+        Send(out.str());
+        return true;
+    }
     if (command == "CONFIG") {
         MappingOptions options;
         auto& spec = options.grid;
@@ -109,6 +132,7 @@ bool StdioInterface::Dispatch(const std::string& line) {
             if (command == "FINISH") integration_.FinishMapping();
             else if (command == "CANCEL") integration_.CancelMapping();
             else if (command == "STATUS") { Send(Status()); return true; }
+            else if (command == "WAIT_PLANNER") integration_.WaitPlanner();
             else throw std::invalid_argument("unknown command");
         }
     }

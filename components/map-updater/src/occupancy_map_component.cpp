@@ -18,12 +18,19 @@ OccupancyMapComponent::OccupancyMapComponent(roboframe::GridSpec spec) : spec_(s
     roboframe::ValidateGridSpec(spec);
     evidence_.resize(std::size_t(spec.width) * spec.height);
     observations_.resize(evidence_.size());
+    current_.spec = spec_;
+    current_.cells = roboframe::GridCells(evidence_.size());
 }
 void OccupancyMapComponent::Reset() {
     if (lifecycle_ != roboframe::Lifecycle::active) throw std::logic_error("grid inactive");
     std::fill(evidence_.begin(), evidence_.end(), 0);
     revision_ = 0;
     stamp_us_ = -1;
+    copied_bytes_ = 0;
+    current_.revision = 0;
+    current_.stamp_us = -1;
+    current_.cells = roboframe::GridCells(evidence_.size());
+    published_.reset();
 }
 bool OccupancyMapComponent::Cell(double x, double y, int& ix, int& iy) const {
     const double gx = (x - spec_.origin_x) / spec_.resolution;
@@ -74,6 +81,7 @@ Update OccupancyMapComponent::PushScan(const roboframe::Scan2DPtr& scan, const r
         auto& value = evidence_[index];
         value = static_cast<std::int16_t>(std::max(-30, std::min(30,
             int(value) + (observations_[index] == 2 ? 4 : -1))));
+        copied_bytes_ += current_.cells.Set(index, value >= 3 ? 0 : value < 0 ? 254 : 205);
         observations_[index] = 0;
     }
     touched_.clear();
@@ -82,12 +90,12 @@ Update OccupancyMapComponent::PushScan(const roboframe::Scan2DPtr& scan, const r
     return update;
 }
 roboframe::GridSnapshot OccupancyMapComponent::Snapshot() const {
-    auto map = std::make_shared<roboframe::Grid>();
-    map->spec = spec_;
-    map->revision = revision_;
-    map->stamp_us = stamp_us_;
-    map->cells.reserve(evidence_.size());
-    for (auto value : evidence_) map->cells.push_back(value >= 3 ? 0 : value < 0 ? 254 : 205);
-    return map;
+    if (!published_ || published_->revision != revision_) {
+        auto map = std::make_shared<roboframe::Grid>(current_);
+        map->revision = revision_;
+        map->stamp_us = stamp_us_;
+        published_ = std::move(map);
+    }
+    return published_;
 }
 } // namespace map_updater

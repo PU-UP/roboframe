@@ -36,7 +36,7 @@ add_library(roboframe_integration
     integration/mapping_flow.cpp integration/pose_buffer.cpp)
 target_include_directories(roboframe_integration PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(roboframe_integration PUBLIC Roboframe::sdk
-    PRIVATE Odom::component MapUpdater::component MapServer::component)
+    PRIVATE Odom::component MapUpdater::component MapServer::component Planner::component)
 add_library(roboframe_stdio interface/stdio_interface.cpp)
 target_include_directories(roboframe_stdio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(roboframe_stdio PRIVATE roboframe_integration)

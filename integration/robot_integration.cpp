@@ -32,6 +32,9 @@ void RobotIntegration::Shutdown() { if (impl_) impl_->Shutdown(); }
 const MappingStatus& RobotIntegration::mapping_status() const { return Configured().status_; }
 std::size_t RobotIntegration::pending() const { return Configured().pending_.size(); }
 GridSnapshot RobotIntegration::map() const { return Configured().frozen_; }
+GridSnapshot RobotIntegration::live_map() const { return Configured().live_; }
+DataFlowStatus RobotIntegration::data_flow_status() const { return Configured().Resources(); }
+void RobotIntegration::WaitPlanner() { Configured().WaitPlanner(); }
 
 RobotIntegration::Impl::Impl(MappingOptions options, std::string directory)
     : pose_buffer_({512, options.max_pose_gap_us}), odometry_([this](const TimedPose2D& pose) {
@@ -40,12 +43,14 @@ RobotIntegration::Impl::Impl(MappingOptions options, std::string directory)
     CheckComponent(odom::GetComponentInfo());
     CheckComponent(map_updater::GetComponentInfo());
     CheckComponent(map_server::GetComponentInfo());
-    // The only potentially failing activation comes first; later activations allocate no resources.
+    CheckComponent(planner::GetComponentInfo());
+    // If later activation fails, the planner member destructor joins its worker.
+    planner_.Activate();
     store_.Activate();
     odometry_.Activate();
     grid_.Activate();
     active_ = true;
-    ROBO_LOG_INFO("integration") << "modules active: odom -> map-updater -> map-server; SDK "
+    ROBO_LOG_INFO("integration") << "modules active: odom -> map-updater -> planner/map-server; SDK "
                              << ToString(sdk_version);
 }
 RobotIntegration::Impl::~Impl() { Shutdown(); }
@@ -59,8 +64,13 @@ void RobotIntegration::Impl::Shutdown() {
         status_.dropped += pending_.size();
         status_.drop_cancel += pending_.size();
         status_.phase = MappingPhase::idle;
+    } else if (updating_) {
+        resources_.live_dropped += pending_.size();
     }
+    planner_.Deactivate();
     pending_.clear();
+    latest_scan_.reset();
+    updating_ = false;
     grid_.Deactivate();
     odometry_.Deactivate();
     pose_buffer_.Clear();

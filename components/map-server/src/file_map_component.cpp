@@ -1,4 +1,6 @@
 #include <map_server/file_map_component.hpp>
+#include <array>
+#include <vector>
 #include <cerrno>
 #include <cctype>
 #include <cstdio>
@@ -18,10 +20,10 @@ roboframe::ComponentInfo GetComponentInfo() {
     return {component_name, source_id, roboframe::sdk_version};
 }
 namespace {
-std::uint64_t Hash(const std::string& metadata, const std::vector<std::uint8_t>& bytes) {
+std::uint64_t Hash(const std::string& metadata, const roboframe::GridCells& bytes) {
     std::uint64_t result = 14695981039346656037ULL;
     for (unsigned char ch : metadata) { result ^= ch; result *= 1099511628211ULL; }
-    for (auto ch : bytes) { result ^= ch; result *= 1099511628211ULL; }
+    for (std::size_t i = 0; i < bytes.size(); ++i) { result ^= bytes[i]; result *= 1099511628211ULL; }
     return result; // Integrity check, not authentication.
 }
 std::uint64_t Unsigned(std::istream& input, std::uint64_t maximum) {
@@ -38,8 +40,8 @@ void Validate(const roboframe::Grid& map) {
     if (!map.revision || map.stamp_us < 0 ||
         map.cells.size() != std::size_t(map.spec.width) * map.spec.height)
         throw std::invalid_argument("incomplete map");
-    for (auto cell : map.cells)
-        if (cell != 0 && cell != 254 && cell != 205) throw std::invalid_argument("invalid occupancy cell");
+    for (std::size_t i = 0; i < map.cells.size(); ++i)
+        if (map.cells[i] != 0 && map.cells[i] != 254 && map.cells[i] != 205) throw std::invalid_argument("invalid occupancy cell");
 }
 void Write(int fd, const void* data, std::size_t length) {
     const auto* bytes = static_cast<const char*>(data);
@@ -83,7 +85,8 @@ void FileMapComponent::Save(const std::string& name, const roboframe::GridSnapsh
     if (fd < 0) throw std::system_error(errno, std::generic_category(), "create temporary map");
     try {
         Write(fd, header.data(), header.size());
-        Write(fd, map->cells.data(), map->cells.size());
+        for (std::size_t i = 0; i < map->cells.block_count(); ++i)
+            Write(fd, map->cells.BlockData(i), map->cells.BlockSize(i));
         if (::fsync(fd)) throw std::system_error(errno, std::generic_category(), "flush map");
         const int close_result = ::close(fd);
         fd = -1;
@@ -126,9 +129,15 @@ roboframe::GridSnapshot FileMapComponent::Load(const std::string& name) const {
     map->stamp_us = static_cast<std::int64_t>(Unsigned(fields, std::numeric_limits<std::int64_t>::max()));
     if (fields >> extra) throw std::runtime_error("unexpected map metadata");
     roboframe::ValidateGridSpec(map->spec);
-    map->cells.resize(std::size_t(map->spec.width) * map->spec.height);
-    if (!input.read(reinterpret_cast<char*>(map->cells.data()), map->cells.size()) ||
-        input.peek() != std::char_traits<char>::eof()) throw std::runtime_error("map payload length mismatch");
+    map->cells = roboframe::GridCells(std::size_t(map->spec.width) * map->spec.height);
+    std::array<char, roboframe::GridCells::block_capacity> block{};
+    for (std::size_t i = 0; i < map->cells.block_count(); ++i) {
+        const auto size = map->cells.BlockSize(i);
+        if (!input.read(block.data(), size)) throw std::runtime_error("map payload length mismatch");
+        for (std::size_t j = 0; j < size; ++j)
+            map->cells.Set(i * roboframe::GridCells::block_capacity + j, static_cast<std::uint8_t>(block[j]));
+    }
+    if (input.peek() != std::char_traits<char>::eof()) throw std::runtime_error("map payload length mismatch");
     Validate(*map);
     if (checksum != std::to_string(Hash(metadata, map->cells))) throw std::runtime_error("map checksum mismatch");
     return map;

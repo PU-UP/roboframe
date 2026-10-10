@@ -15,6 +15,7 @@ integration/mapping_flow.cpp            建图流程、地图操作
 components/odom/                        PassthroughOdomComponent
 components/map-updater/                 OccupancyMapComponent
 components/map-server/                  FileMapComponent
+components/planner/                     ReadOnlyPlannerComponent（读取验证，不生成路径）
 sdk/                                   公共数据、生命周期、可选任务、日志、版本
 tools/mapping/                          外部回放和地图查看
 tools/build-studio/                     源码/安装包/混合构建命令预览
@@ -78,6 +79,8 @@ python3 tools/mapping/replay.py --scans 0 --finish-after 12267 \
 ~~~
 输出目录必须不存在，防止覆盖地图。回放需要 history 中的 intel.log.gz。
 查看输出 replay.html；[链路、协议与地图验证](docs/mapping.md)。
+FINISH 保存基准快照，之后 scan 继续更新实时地图。SAVE 保存基准，SNAPSHOT 保存当前地图；
+planner 读取共享 scan 和地图。详见 [大数据共享与验收](docs/data-sharing.md)。
 
 ## 独立开发与安装包
 每个组件 tests/ 下的具名测试都是直接调用组件的 main，可独立运行和调试。
@@ -91,7 +94,7 @@ cmake --build build-odom
 ctest --test-dir build-odom --output-on-failure
 cmake --install build-odom --prefix "$PWD/build-packages"
 ~~~
-map-updater、map-server 同样构建安装。仅使用安装包：
+map-updater、map-server、planner 同样构建安装。仅使用安装包：
 ~~~sh
 cmake -S . -B build-packaged -DROBOFRAME_USE_INSTALLED_COMPONENTS=ON \
   -DCMAKE_PREFIX_PATH="$PWD/build-packages"
@@ -108,12 +111,12 @@ BUILD_TESTING=OFF 不要求 Python，不编译测试 main。
 
 ## 版本维护
 SDK 维护者只维护 sdk/VERSION；产品维护者在 cmake/Dependencies.cmake 选择 SDK
-精确版本与组件清单。当前使用 SDK 2.0，旧组件包须重建。
+精确版本与组件清单。当前使用 SDK 3.0，Grid 的分块存储接口有变化，旧组件包须重建。
 component 不再有手写 VERSION 或 contract_version，也不自行填写 SDK 要求。
 源码标识和实际编译 SDK 自动生成，安装包携带原始记录；启动时只检查 SDK 兼容性。
 源码变化自动更新指纹，SDK 与产物记录不同则按兼容规则拒绝，不篡改旧包记录。
 源码指纹用于追溯，不是兼容性保证。[SDK 规则](sdk/README.md)。
 
-当前串行调用、静态链接；没有增加 BT、线程池、动态插件或 ARM 工具链。
+integration 和地图写入仍串行；planner 有一个独立只读线程。静态链接，无 BT、线程池、动态插件或 ARM 工具链。
 
 多产品布局、BT、异步数据、ROS/DDS、ARM 和工具演进统一记录在 [TODO.md](TODO.md)。

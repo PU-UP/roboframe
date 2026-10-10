@@ -19,19 +19,19 @@ a{color:#1664ad}.files{display:flex;gap:14px;margin:18px 0}.warning{font-size:12
 @media(max-width:900px){.layout{grid-template-columns:1fr}header span{float:none;display:block;margin-top:8px}}
 </style>
 <header><strong>roboframe / 建图验收</strong><span>真实 odom + scan · 独立进程 IPC · C++14</span></header>
-<main><h1>地图从无到有，结束后保持不变。</h1>
+<main><h1>基准地图保留，实时地图继续更新。</h1>
 <p class="muted">拖动时间轴查看真实地图快照与录制轨迹。地图按检查点更新，轨迹按扫描时间推进；没有伪造实时 SLAM 或运动控制。</p>
 <div class="layout"><section class="panel">
 <canvas id="map" aria-label="占据地图和录制轨迹"></canvas>
-<div class="legend"><span>白：空闲</span><span>黑：占据</span><span>灰：未知</span><span class="blue">蓝：建图期间</span><span class="orange">橙：结束后仍在回放</span></div>
+<div class="legend"><span>白：空闲</span><span>黑：占据</span><span>灰：未知</span><span class="blue">蓝：建图期间</span><span class="orange">橙：结束建图后继续更新</span></div>
 <div class="controls"><button id="play">播放</button><input id="time" type="range" min="0" value="0" aria-label="回放帧"><output id="frame"></output></div>
 <p id="snapshot" class="muted"></p>
 </section><aside class="panel">
 <h2>链路与验收结果</h2><div class="stage" id="stage"></div>
-<p class="muted">Python 日志适配 → 管道 IPC → interface → integration<br>odom 输出 → integration 时间匹配 → map-updater → map-server</p>
+<p class="muted">Python 日志适配 → 管道 IPC → interface → integration<br>odom 输出 → integration 时间匹配 → map-updater → 只读 planner / map-server</p>
 <dl id="stats"></dl>
-<div class="files"><a href="summary.json">验收数据</a><a href="final.png">最终地图</a><a href="mapping-events.jsonl">指令回执</a></div>
-<p class="warning">使用每条 FLASER 记录配套的原始位姿，未修改轨迹。冻结和重载通过只表示业务链路通过；地图几何质量需另行评估。结束建图不代表机器人已停止运动。</p>
+<div class="files"><a href="summary.json">验收数据</a><a href="final.png">基准地图</a><a href="live.png">实时地图</a><a href="mapping-events.jsonl">指令回执</a></div>
+<p class="warning">使用每条 FLASER 记录配套的原始位姿，未修改轨迹。旧快照一致和重载通过只表示数据链路通过；地图几何质量需另行评估。planner 只读取数据，不生成路径。复制量不含初始分配、指针表和 IPC 解码；它不是进程总内存统计。结束建图不代表机器人已停止运动。</p>
 </aside></div></main>
 <script>
 const report=__REPORT__, s=report.summary, timeline=document.getElementById('time');
@@ -43,7 +43,12 @@ const stats=[
 ['结束建图指令','第 '+s.finish_after+' 帧之后'],
 ['实际进入地图',s.before.integrated+' 帧'],
 ['时间匹配等丢弃',s.before.dropped+' 帧'],
-['结束后忽略',s.after.ignored+' scan；odom 继续输入'],
+['结束后继续更新',s.resources.live_updates+' scan'],
+['Planner 读完 / 替换待处理',s.resources.planner_completed+' / '+s.resources.planner_replaced],
+['Planner 最大持有 / 不一致',s.resources.planner_peak_retained+' 份 / '+s.resources.planner_inconsistent+' 次'],
+['地图块复制总量',(s.resources.copied_bytes/1048576).toFixed(2)+' MiB'],
+['每版全量复制的估算量',(s.full_snapshot_equivalent_bytes/1048576).toFixed(2)+' MiB'],
+['结束后改变的栅格',s.changed_cells_after_finish.toLocaleString()],
 ['地图冻结 / 进程重启重载',s.frozen_equal&&s.reloaded_equal?'全部通过':'失败'],
 ['地图',s.width+' × '+s.height+'；'+s.resolution+' m / cell']
 ];
@@ -61,7 +66,7 @@ function draw(){
  }
  if(n>0){const p=report.trajectory[n-1];if(p[1]!==null){const [x,y]=point(p);ctx.fillStyle='#cb3b40';ctx.beginPath();ctx.arc(x,y,Math.max(3,s.width/200),0,Math.PI*2);ctx.fill()}}
  document.getElementById('frame').textContent=n+' / '+s.replayed_scans;
- document.getElementById('stage').textContent=n===0?'组件启动，尚未输入扫描':n<s.finish_after?'建图中：扫描与同一时刻的 odom 绑定':'地图已冻结并保存；后续数据不会改变地图';
+ document.getElementById('stage').textContent=n===0?'组件启动，尚未输入扫描':n<s.finish_after?'建图中：扫描与同一时刻的 odom 绑定':'基准地图已保存；实时地图继续更新，planner 读取稳定快照';
  document.getElementById('snapshot').textContent=f<0?'尚未到第一个地图检查点。':'当前显示真实快照：已融合 '+report.frames[f].revision+' 帧，数据时间 '+(report.frames[f].stamp_us/1e6).toFixed(2)+' s；已知栅格 '+report.frames[f].known.toLocaleString()+'。';
 }
 let timer=null;const button=document.getElementById('play');

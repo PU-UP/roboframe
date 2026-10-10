@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
-#include <vector>
+#include <roboframe/grid_cells.hpp>
 
 namespace roboframe {
 // Cell (0,0) is bottom-left in odom; cells are row-major, y increasing upwards.
@@ -24,7 +24,7 @@ struct Grid {
     GridSpec spec;
     std::uint64_t revision = 0;
     std::int64_t stamp_us = -1;
-    std::vector<std::uint8_t> cells;
+    GridCells cells;
 };
 using GridSnapshot = std::shared_ptr<const Grid>;
 } // namespace roboframe

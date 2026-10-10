@@ -23,7 +23,7 @@ class MappingIPC(unittest.TestCase):
                 'ODOM 200 3 0 0\nSCAN 150 1 2 0\nSAVE frozen\nSTATUS\nQUIT\n', directory)
             self.assertNotIn('ERROR', '\n'.join(lines))
             self.assertIn('STATUS mapping 1 1 0 0 0 1 0 0 0 0 0 0 0', lines)
-            self.assertIn('STATUS ready 1 1 1 1 0 0 1 0 1 0 0 0 0', lines)
+            self.assertIn('STATUS ready 1 1 1 0 0 0 1 0 1 0 0 0 0', lines)
             final = (pathlib.Path(directory) / 'final.rfgrid').read_bytes()
             self.assertEqual(final, (pathlib.Path(directory) / 'frozen.rfgrid').read_bytes())
             lines = self.run_session(CONFIG + 'LOAD final\nSAVE reloaded\nQUIT\n', directory)
@@ -51,6 +51,28 @@ class MappingIPC(unittest.TestCase):
             self.assertIn('STATUS mapping 1 0 0 0 0 0 0 0 0 0 0 0 0', lines)
             self.assertEqual(list(pathlib.Path(directory).iterdir()), [])
             self.assertEqual(self.run_session('QUIT\n', directory), ['READY roboframe-v1', 'BYE'])
+
+    def test_live_map_and_shared_reader(self):
+        with tempfile.TemporaryDirectory() as directory:
+            commands = CONFIG + 'BEGIN 1\nODOM 0 0 0 0\nSCAN 0 1 2 0\nFINISH\nSAVE baseline\n'
+            for i in range(1, 40):
+                commands += f'ODOM {i * 100000} 0 0 0\nSCAN {i * 100000} 1 3 0\n'
+            commands += 'WAIT_PLANNER\nRESOURCES\nSAVE preserved\nSNAPSHOT live\nQUIT\n'
+            lines = self.run_session(commands, directory)
+            self.assertFalse(any(line.startswith('ERROR') for line in lines))
+            record = next(line for line in lines if line.startswith('RESOURCES '))
+            resources = {key: int(value) for key, value in
+                         (field.split('=') for field in record.split()[1:])}
+            self.assertEqual(resources['live_updates'], 39)
+            self.assertEqual(resources['planner_revision'], 40)
+            self.assertEqual(resources['planner_inconsistent'], 0)
+            self.assertLessEqual(resources['planner_peak_retained'], 2)
+            self.assertEqual(resources['planner_pending'] + resources['planner_active'], 0)
+            self.assertEqual(resources['planner_completed'] + resources['planner_replaced'],
+                             resources['planner_received'])
+            root = pathlib.Path(directory)
+            self.assertEqual((root / 'baseline.rfgrid').read_bytes(), (root / 'preserved.rfgrid').read_bytes())
+            self.assertNotEqual((root / 'baseline.rfgrid').read_bytes(), (root / 'live.rfgrid').read_bytes())
 
     def test_eof_is_not_finish_or_save(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,6 +1,7 @@
 #pragma once
 #include <roboframe/scan2d.hpp>
 #include <roboframe/mapping.hpp>
+#include <roboframe/data_flow.hpp>
 #include <memory>
 #include <string>
 
@@ -25,7 +26,10 @@ public:
     void Shutdown();
     const MappingStatus& mapping_status() const;
     std::size_t pending() const;
-    GridSnapshot map() const;
+    GridSnapshot map() const; // Saved baseline captured by FINISH or LOAD.
+    GridSnapshot live_map() const;
+    DataFlowStatus data_flow_status() const;
+    void WaitPlanner();
 private:
     struct Impl;
     Impl& Configured() const;

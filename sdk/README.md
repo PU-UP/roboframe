@@ -1,4 +1,4 @@
-# Roboframe SDK 2.0
+# Roboframe SDK 3.0
 interface、integration、component 共用的公开契约和小型基础设施。
 SDK 位于主目录的 sdk/，与 interfaces/、products/、components/ 并列；
 后两种复数目录是未来多产品布局，当前不为占位而搬动目录或创建空产品。
@@ -47,7 +47,8 @@ SDK 统一必要的输出数据语义，不据此要求所有算法采用同一�
 | task.hpp | 可选任务状态和 ID，不管理线程或产品流程 |
 | geometry2d.hpp | 微秒时间戳、米/弧度、T_odom_base |
 | scan2d.hpp | base_link 下只读二维命中点；不代表所有原始雷达消息 |
-| grid.hpp | odom 系二维栅格、只读快照 |
+| grid.hpp / grid_cells.hpp | odom 系二维栅格、4 KiB 分块写时复制、只读快照 |
+| data_flow.hpp | 产品对外的数据共享资源统计 |
 | mapping.hpp | 可选建图公开参数与状态，不规定产品工作流 |
 | log.hpp | ROBO_LOG_INFO 等日志，默认 stderr，可替换 sink |
 | version.hpp | SDK 兼容核对与组件源码标识，不保证二进制 ABI |
@@ -57,8 +58,8 @@ Scan2D 发布后生产者不得通过其他可写别名修改数据；消费者�
 现有 GridSpec 校验仍混有资源上限，已记入待办，不在本次扩大重构。
 
 SDK 不强制 Integration 基类或通用 AddData。无真实配置的组件不设空 Config。
-调用目前串行；组件头文件声明回调生存期、重入和异常语义。
-日志 sink 不重入日志 API；其异常被日志层吞掉。线程安全只覆盖日志。
+integration 与地图写入串行，planner 使用受限异步读取；各组件头文件声明并发、回调和异常语义。
+日志 sink 不重入日志 API；其异常被日志层吞掉。日志及 planner 的跨线程入口有同步；SDK 类型不自动保证所有可变对象的线程安全。
 组件 tests 下的 main 可脱离框架运行，不维护两套相同示例。
 
 ## 版本与交付
@@ -70,8 +71,10 @@ component 开发者不维护 SDK 版本、组件发布数字或独立 contract_v
 独立开发时通过 CMAKE_PREFIX_PATH 或 RoboframeSDK_DIR 使用产品指定的 SDK；
 根目录构建会检查源码 SDK 或安装包是否与产品选择一致。
 
-本次 SDK 2.0 删除 ComponentInfo 的独立契约字段，以自动 source_id 替代组件发布数字。
-这是公开结构变化，所以升级 major；旧组件开发包必须重建，不能与新 SDK 混用。
+SDK 2.0 已移除独立契约版本；SDK 3.0 将 Grid::cells 改为分块写时复制，
+Scan2D 改为只能移动而不能复制。这些是公开接口变化，旧组件开发包必须重建。
+Scan2DPtr 和 GridSnapshot 跨模块只读共享；具体所有权与更新约束见
+[数据共享说明](../docs/data-sharing.md)。
 产品配置阶段会拒绝缺少构建元数据的旧包。
 
 组件身份在 CMake 构建时自动生成：
@@ -93,7 +96,7 @@ SDK 的清单位于 share/roboframe/sdk/VERSION。
 
 配置阶段检查产品 SDK 选择和组件编译 SDK；运行前再次检查宿主 SDK
 是否与组件的 built_with_sdk 同 major 且不低于它。检查只比较 SDK，
-不再要求 integration 手写三个组件契约版本。
+不再要求 integration 手写组件契约版本。
 预编译组件保留原来的 SDK 与源码标识，宿主升级不会改写这些事实。
 启动日志输出名称、源码标识、编译 SDK；stdout 仍只用于 IPC。
 

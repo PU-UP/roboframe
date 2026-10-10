@@ -16,6 +16,8 @@ int main() {
     const auto map = grid.Snapshot();
     Check(map->cells[14] == 0 && map->cells[11] == 254 && map->cells[12] == 254);
     Check(empty->cells[14] == 205 && empty->revision == 0);
+    Check(grid.Snapshot() == grid.Snapshot());
+    Check(grid.copied_bytes() == roboframe::GridCells::block_capacity);
     Check(scan->hits[0].x == 3);
     Reject([&] { grid.PushScan(scan, {1, {}}); });
     auto second = std::make_shared<const roboframe::Scan2D>(roboframe::Scan2D{2, {{3, 0}}});
@@ -34,7 +36,7 @@ int main() {
     const auto forward = grid.Snapshot();
     Check(forward->cells[14] == 0); // An observed endpoint wins over crossing rays in the same scan.
     grid.Reset();
-    auto reversed = std::make_shared<roboframe::Scan2D>(*crossing);
+    auto reversed = std::make_shared<roboframe::Scan2D>(crossing->stamp_us, crossing->hits);
     std::reverse(reversed->hits.begin(), reversed->hits.end());
     grid.PushScan(reversed, {3, {1.5, 1.5, 0}});
     Check(grid.Snapshot()->cells == forward->cells);

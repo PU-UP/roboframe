@@ -153,6 +153,12 @@ class Host:
             raise RuntimeError('malformed status')
         return dict(phase=values[1], **dict(zip(keys, map(int, values[2:]))))
 
+    def resources(self):
+        values = self.send('RESOURCES').split()
+        if values[0] != 'RESOURCES':
+            raise RuntimeError('malformed resource response')
+        return {key: int(value) for key, value in (field.split('=') for field in values[1:])}
+
     def close(self):
         if self.process.poll() is None:
             self.process.kill()
@@ -194,7 +200,7 @@ def run(args):
     summary_path = args.output / 'summary.json'
     summary_path.write_text(json.dumps(dict(passed=False, reason='run incomplete')))
     host = Host(args.binary.resolve(), args.output.resolve(), 'mapping')
-    frames, trajectory = [], []
+    frames, trajectory, resource_samples = [], [], []
     scan_number, finished = 0, False
     checkpoints = max(1, finish // 12)
 
@@ -205,6 +211,7 @@ def run(args):
         frames.append(dict(after_scan=number, revision=grid['revision'],
             stamp_us=grid['stamp_us'], known=sum(c != 205 for c in grid['cells']),
             image='data:image/png;base64,' + base64.b64encode(picture).decode()))
+        resource_samples.append(dict(after_scan=number, **host.resources()))
         return grid
 
     def finish_mapping():
@@ -236,19 +243,34 @@ def run(args):
                     name = f'progress-{scan_number:05d}'
                     host.send('SNAPSHOT ' + name)
                     frame(name, scan_number)
+            if finished and scan_number < count and scan_number % checkpoints == 0:
+                name = f'live-{scan_number:05d}'
+                host.send('SNAPSHOT ' + name)
+                frame(name, scan_number)
             if scan_number % 1000 == 0:
                 print(f'IPC scan {scan_number}/{count}', flush=True)
         if not finished:
             before, final_grid = finish_mapping()
         after = host.status()
         host.send('SAVE frozen')
+        host.send('SNAPSHOT live')
+        live_grid = frame('live', scan_number)
+        host.send('WAIT_PLANNER')
+        resources = host.resources()
+        resource_samples.append(dict(after_scan=scan_number, **resources))
         original = (args.output / 'final.rfgrid').read_bytes()
         if original != (args.output / 'frozen.rfgrid').read_bytes():
             raise RuntimeError('map changed after FINISH')
         if (before['integrated'] != after['integrated'] or after['received'] != finish or
                 after['integrated'] + after['dropped'] != finish or after['pending'] != 0 or
-                after['ignored'] != count - finish or after['used_rays'] == 0):
+                after['ignored'] != 0 or after['used_rays'] == 0):
             raise RuntimeError('workflow accounting mismatch')
+        if (resources['live_updates'] != count - finish or resources['live_dropped'] or live_grid['revision'] != count or
+                resources['planner_inconsistent'] or resources['planner_peak_retained'] > 2 or
+                resources['planner_pending'] or resources['planner_active'] or
+                resources['planner_revision'] != live_grid['revision'] or
+                resources['planner_completed'] + resources['planner_replaced'] != resources['planner_received']):
+            raise RuntimeError('shared-resource or continued-update check failed')
         host.send('QUIT')
         if host.process.wait(timeout=5) != 0:
             raise RuntimeError('mapping host failed')
@@ -272,16 +294,20 @@ def run(args):
                    pose_source='FLASER associated raw odometry; unchanged',
                    max_odom_gap_ms=args.max_odom_gap_ms, reordered_records=backwards, before=before, after=after,
                    saved_map_sha256=hashlib.sha256(original).hexdigest(),
-                   frozen_equal=True, reloaded_equal=True,
+                   frozen_equal=True, reloaded_equal=True, resources=resources,
+                   live_revision=live_grid['revision'],
+                   changed_cells_after_finish=sum(a != b for a, b in zip(final_grid['cells'], live_grid['cells'])),
+                   full_snapshot_equivalent_bytes=resources['publications'] * resources['map_bytes'],
                    known_cells=sum(c != 205 for c in final_grid['cells']),
                    occupied_cells=final_grid['cells'].count(0),
                    filtered_ranges=sum(r['filtered'] for r in records if r['kind'] == 'scan'),
                    width=width, height=height, resolution=0.1, origin=[ox, oy])
-    report = dict(summary=summary, frames=frames, trajectory=trajectory)
+    report = dict(summary=summary, frames=frames, trajectory=trajectory, resource_samples=resource_samples)
     html = Path(__file__).with_name('replay.html').read_text()
     (args.output / 'replay.html').write_text(html.replace('__REPORT__', json.dumps(report).replace('<', '\\u003c')))
     summary_path.write_text(json.dumps(summary, indent=2) + '\n')
-    print('PASS: IPC mapping, early finish, immutable map, save and reload', flush=True)
+    print('PASS: baseline preserved, live updates, bounded shared planner reads, save/reload', flush=True)
+    print(json.dumps(resources, indent=2), flush=True)
     print(args.output.resolve() / 'replay.html')
 
 

@@ -46,7 +46,15 @@ int main() {
     Reject([&] { integration.SaveMap("first"); });
     integration.PushOdometry({200, {3, 0, 0}});
     integration.PushScan(Scan(150));
-    Check(integration.map() == frozen && integration.mapping_status().ignored == 1);
+    Check(integration.map() == frozen && integration.mapping_status().ignored == 0);
+    integration.WaitPlanner();
+    Check(integration.live_map()->revision > frozen->revision);
+    Check(integration.data_flow_status().live_updates == 1);
+    Check(!integration.data_flow_status().planner_inconsistent);
+    integration.PushOdometry({300, {100, 0, 0}});
+    integration.PushScan(Scan(300));
+    Check(integration.data_flow_status().live_dropped == 1);
+    Check(integration.mapping_status().dropped == 0);
     integration.SaveMap("second");
     integration.LoadMap("first");
     Check(integration.map()->cells == frozen->cells);
@@ -54,8 +62,8 @@ int main() {
     Check(integration.map()->cells == frozen->cells);
     integration.StartMapping(2);
     Reject([&] { integration.FinishMapping(); });
-    integration.PushScan(Scan(250));
-    integration.PushOdometry({400, {4, 0, 0}});
+    integration.PushScan(Scan(350));
+    integration.PushOdometry({600, {4, 0, 0}});
     Check(integration.mapping_status().dropped == 1);
     for (int i = 0; i < 65; ++i) integration.PushScan(Scan(1000 + i));
     Check(integration.pending() == 64 && integration.mapping_status().dropped == 2);
