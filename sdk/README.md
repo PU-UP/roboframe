@@ -15,7 +15,7 @@ SDK 的 C++ 对象不是线协议，不能直接把对象内存作为 IPC 数据
 | 建图公开配置、状态 | SDK mapping.hpp；不含建图流程实现 |
 | 产品独有且需要跨 interface 的请求/结果 | 确有需要时放 SDK products/<product>/，不污染通用类型 |
 | 组件独有配置、局部更新结果、诊断与算法参数 | 具名组件头文件；只有需独立复用时才拆组件契约头 |
-| 接线、缓存、同步策略、业务流程和未公开的产品状态 | integration |
+| 跨组件接线、缓存与时间匹配、业务流程和未公开的产品状态 | integration；算法内部同步与融合留在 component |
 | 传输解析、协议编码和传输资源 | interface |
 
 integration 装配具体组件，所以其实现依赖组件的公开接口是正常的；
@@ -23,6 +23,10 @@ interface 不依赖组件数据类型或头文件。integration 公开入口只�
 具体组件和 PoseBuffer 在私有 robot_integration_impl.hpp 中，CMake 组件依赖为 PRIVATE。
 main 拥有 integration，StdioInterface 只借用引用。interface 仍依赖具体产品的公开操作，
 本次没有引入适用于所有产品的抽象接口。
+
+组件封装与组合遵循 [主文档架构原则](../README.md#架构原则能力封装与按需组合)：
+SDK 统一必要的输出数据语义，不据此要求所有算法采用同一种输入或统一能力基类。
+产品提出频率与延迟要求；满足这些要求所需的内部传播、融合由具体组件负责。
 
 ## SDK 准入规则
 1. 新类型必须有实际的公开边界或独立消费者；不按未来模块清单预建类型。
@@ -46,7 +50,7 @@ main 拥有 integration，StdioInterface 只借用引用。interface 仍依赖�
 | grid.hpp | odom 系二维栅格、只读快照 |
 | mapping.hpp | 可选建图公开参数与状态，不规定产品工作流 |
 | log.hpp | ROBO_LOG_INFO 等日志，默认 stderr，可替换 sink |
-| version.hpp | SDK、实现和契约版本核对，不保证二进制 ABI |
+| version.hpp | SDK 兼容核对与组件源码标识，不保证二进制 ABI |
 
 Scan2D 发布后生产者不得通过其他可写别名修改数据；消费者可以保留只读共享指针。
 20 米与 2048 点限制属于当前地图更新组件的输入策略，不是所有 SDK 消费者的限制。
