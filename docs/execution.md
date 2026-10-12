@@ -1,127 +1,124 @@
-# 当前执行模型：串行产品入口，按需异步计算
+# 执行边界：明确接线、并发交付、有序状态
 
-目的：慢地图计算不能阻塞后续传感器输入和取消命令。integration 仍不支持直接并发调用；
-没有通用调度器、线程池或每组件一线程的要求，也没有新增规划控制。
+integration 是产品的装配与编排层，不是一条线程。组件的算法身份不决定执行机制。
+SDK 提供可复用的有界执行通道；当前产品用它连接实际算法，不再为某种算法编写专用 worker。
 
-## 线程与职责
+## 三个边界
 
-| 边界 | 当前执行方式 | 约束 |
-|---|---|---|
-| interface/stdio_channel、stdio_interface | 主线程非阻塞收发、解析和编码 | 每次处理一行之前服务计算完成队列；空闲时最多 5 ms poll 一次。没有无限输入消息队列。 |
-| integration 的所有公开调用（包括查询、Poll） | 同一 owner 主线程 | 接线、对时、状态变化、结果筛选和 ProductOutputs 回调都在这里；不是线程安全对象。 |
-| PassthroughOdomComponent、RecordedLidarMapComponent | owner 上同步执行 | 当前实现只是校验/录制数据转发，返回快；换成真实耗时算法时需重新选择执行边界。 |
-| MapUpdateWorker（integration 私有适配器） | 一条计算线程独占 OccupancyMapComponent | 提交不可变 scan + 已匹配 TF；只通过受限输入/结果队列与 owner 通信，绝不从 worker 调用产品回调。 |
-| OccupancyMapComponent | 保持可独立调用的同步算法 API | 不管理产品会话、不自行创建线程；可选取消谓词用于长循环，取消后必须 Reset 才能复用。 |
-| ReadOnlyPlannerComponent | 原有异步只读线程 | 仅验证共享快照，不新增规划能力。 |
-| map-server、完整地图编码 | owner 上同步执行 | 当前 SAVE/LOAD/SNAPSHOT/GET_MAP 仍可能耗时；这是明确保留的边界，不能宣称整个进程硬实时。 |
+| 位置 | 职责与线程归属 |
+|---|---|
+| interface | 解码、校验、交付输入、编码输出。stdio 当前只有一个接收线程；ROS/DDS 可以有多个数据接收线程。 |
+| integration 数据通路 | `PushOdometry/PushScan/PushMapReference` 可以从不同线程并发调用，也可以与业务指令同时执行。产品的 SensorFlow 只管理相关传感器的对时、TF 和路由状态。 |
+| integration 业务状态 | 配置、查询、开始/结束/取消/保存/加载、SetOutputs、Poll 由一个业务 owner 有序执行。该限制不覆盖传感器入口，也不覆盖算法执行。 |
+| component | 按明确输入输出处理算法。可以同步调用、已有内部异步，或按需使用 SDK 执行通道；不要求所有组件独占线程。 |
 
 ~~~mermaid
 flowchart LR
-  IPC[IPC 输入] --> I[interface 主线程]
-  I --> G[integration owner: 接线 / 状态 / 对时]
-  G --> O[快速 odom / 录制 lidar-map]
-  O --> G
-  G --> Q[有界提交: scan + TF + generation]
-  Q --> W[地图工作线程: 同步 component]
-  W --> R[有界完成队列: 不可变结果]
-  R --> P[owner Poll: 检查 generation]
-  P --> G
-  G --> CB[owner ProductOutputs 回调]
-  CB --> OUT[interface 有界输出]
+  S[并发传感器入口] --> R[明确类型的产品接线]
+  R --> A[A 的有界执行通道]
+  R --> B[B 的有界执行通道]
+  A --> RA[类型明确的结果]
+  B --> RB[类型明确的结果]
+  C[有序业务指令] --> G[会话和任务状态]
+  G -->|配置 / 关闭交付 / 取消| R
+  RA -->|业务需要的结果| G
+  RB -->|业务需要的结果| G
 ~~~
 
-关键文件：`integration/map_update_worker.hpp/.cpp` 负责计算通道；`data_flow.cpp` 负责提交和 Poll，
-`mapping_flow.cpp` 负责产品会话；`stdio_channel.cpp` 只提供 owner 服务时机，不认识地图。
-组件独立测试可以直接同步调用算法，无需依赖 integration、IPC 或后台线程。
-未来多个耗时组件可选择内部异步或私有适配器；有实际需求才共享线程池。把全部 integration 搬到一个线程仍会串行堵住所有业务，不能替代计算隔离。
+SensorFlow 的短锁只保护这组相关传感器的缓存和路由状态，不覆盖算法计算、用户回调、文件 I/O、等待线程退出。
+无关联的数据通路不需要经过这把锁。它是本产品的数据接线，不是 SDK 的万能数据分发器。
+没有广播到所有组件，没有 common::Data/any，没有动态字符串类型判断。
+输入锁内仅调用当前已知快速、同步的适配组件；真实耗时算法必须配置执行边界，不能直接替换后继续在输入锁内运行。
+同一个不可变 scan 引用经录制 lidar-map、地图算法和 planner 读取；输入转换只在边界做一次。
 
-替换 ROS/DDS 时：其多个接收回调不能直接并发调用 integration。适配层必须串行交付输入、业务调用与 Poll；
-并为自己的跨线程输入队列定义容量和过载规则。std::shared_ptr 的线程安全不等于 integration 线程安全。
+## SDK 的最小公共机制
 
-## 接收、计算和完成
+`execution.hpp` 提供 `ExecutionChannel<Input, Output>`，不引用组件、地图、建图状态或产品配置。
+构造时指定容量、处理函数和过载策略；类型在编译时确定。工作线程只调用处理函数并交付结果。
 
-1. `PushScan/PushOdometry` 校验并接线，不等待地图计算；输入有效并不代表一定计算。
-   scan 等待配套 pose；匹配后生成确定的完整 TF，计算线程不再读取“最新 pose”。
-2. 计算通道接受的是共享只读 scan、值类型 TF 与 generation；一个有状态 mapper 按接受顺序计算。
-   算法私有 evidence 只由 worker 修改，完成后交付分块写时复制的不可变快照。
-3. worker 完成不改变产品状态、不发产品回调。owner 定期 `Poll()`，每次最多取 8 个结果，
-   判断 generation 后计数、发布地图及任务事件。因此独立 main 也必须在自己的串行循环中调用 Poll。
-4. `ProductOutputs` 全在 owner 线程，不得阻塞、抛异常或重入 integration。需要耗时处理的消费者应自己有界接收。
+- `Submit(generation, input)` 可由多个生产者调用，立即返回 accepted/replaced/full/closed/stale；不会等待算法或等待空位。
+- `Take(result)` 获取完成结果，包含原始输入、输出、generation、取消标志和异常；只取结果，不隐式调用业务代码。
+- 容量包含 **待处理 + 执行中 + 已完成待取**，不是三份各自无限扩展的队列。
+- 默认 reject_newest 保留已接受 FIFO；latest_pending 只替换未开始的待处理输入，不取消当前计算，不覆盖完成结果。
+- `Reset(new_generation)` 清除待处理输入、取消旧计算。非零 generation 必须递增，防止旧任务重新有效；0 表示禁止交付。
+- 处理函数通过 `Cancellation` 检查取消；`WaitFor` 提供可中断等待。结果消费者必须检查 generation，不能把已完成的旧结果视为当前结果。
+- `Stop` 关闭提交、唤醒等待、join、释放结果；不能强杀不合作的算法。生命周期操作由一个管理者调用。
+- `WaitIdle` 仅供独立测试/离线客户端；接收线程和业务事件循环不能调用它等待计算。
 
-stdio **v3**：`REQ id SCAN ...` 的 `OK SCAN` 表示调用已返回，不能视为计算成功回执；
-`DATA` 不逐帧应答。通过 STATUS/RESOURCES 观察已融合、丢弃、待计算和待取结果。
+这是一个按需创建的串行执行组：一个处理函数可以串接多个快速组件；不同的慢计算组使用不同实例并行执行。
+它不自动为每个组件创建线程，不提供线程池、插件注册、动态执行图或任务优先级调度。
+同步算法独立 main 无需使用通道。已有异步组件也不必再套一个异步层。
+输入/输出应为小型值或不可变共享引用；通道只管理交付，不深拷贝大数据、不管理算法私有缓存。
 
-`FINISH` 处理现存对时队列并返回 `ACCEPTED FINISH`，进入 `finishing`；不等待已接受的地图计算。
-此时新的 scan/MAP_POSE 不加入本次地图，odom 仍正常输出。完成后 Poll 发 `finished`，冻结基准并进入 ready；
-ready 后的 scan 继续更新 live 地图，沿用此前共享验收的产品策略。无有效结果或计算失败发 `failed`。
-`SAVE` 只在 ready 成功；`SNAPSHOT` 保存最近已完成版本，不等待排队数据。
-异步 finished/failed 事件的 request_id 为 0，以 session 关联；接受不是完成，完成也不是保存。
-`WAIT_PLANNER` 现在仅检查空闲，忙时立即返回 pending 错误，由调用方稍后重试。
+处理函数也可以将 typed 输出提交到另一个通道，不需要先回业务线程；此时须显式处理下游 Admission。
+当前产品选择由 Poll 汇集地图结果并发布，因为这一步同时决定基准地图和建图终态。这是产品选择，不是 SDK 对全部模块的限制。
 
-## 容量、过载与内存
+## 当前产品如何使用
 
-| 资源 | 上限与策略 |
+| 文件 | 内容 |
 |---|---|
-| scan 等待 odom | 64 帧；满时丢最旧未配对帧，保留较新输入；每帧最多 2048 点。 |
-| pose history | 512 项；原有时间匹配及过期规则不变。 |
-| 地图计算通道 | **排队 + 执行中 + 已完成待取结果合计 8 项**；满时拒收最新计算输入，已接受的 FIFO 保留。 |
-| planner | 一份执行中、一份最新待处理；新提交替换旧待处理项。 |
-| IPC 输出 | 20 MiB 编码文本、256 条可靠消息；连续遥测合并，可靠队列耗尽或持续不读则明确连接失败。 |
+| sdk/include/roboframe/execution.hpp | 唯一公共执行机制：有界容量、过载、异常结果、代际取消、关闭。 |
+| integration/sensor_flow.hpp/.cpp | 并发 typed 入口；快速 odom/lidar-map 接线、64 帧对时队列、512 个 pose、完整 TF 匹配。 |
+| integration/robot_integration_impl.hpp/.cpp | 装配算法与 `ExecutionChannel<ScanWork, MapResult>`；处理函数中只有调用算法、Reset 和生成结果。 |
+| integration/data_flow.cpp | 业务 owner 收取结果、会话检查、状态统计、共享地图发布。 |
+| integration/mapping_flow.cpp | 业务流程与数据接收门禁的有序切换。 |
+| components/planner/... | 复用同一个 ExecutionChannel，删除原先重复的线程循环；仍仅作共享读取验证。 |
 
-通道锁只覆盖取放和少量状态，不覆盖算法，也不等待队列腾出空间。结果使用提交时的容量信用，
-不会因为 owner 暂时没取结果形成另一个无限队列。取消清除排队输入；已完成/执行中的旧结果仍占原来的信用，直到 owner 取走丢弃。
-`compute_pending/active/results/retained/peak_retained/rejected/stale_results` 可用于核对行为；
-`pending()` 只统计当前会话待对时和未收取的计算，旧结果持有量以 compute_retained 为准。
+地图计算通道总容量 8；planner 通道总容量 2，采用 latest_pending。planner 收取结果后再提交新输入，
+保留“最多一个执行中、一个最新待处理”的运行方式；算法读取与锁分离。
+某个通道满时不会等待其他通道，也不会影响传感器入口继续接收。相同输入流仍需由生产者保持时间顺序；
+并发安全不等于自动按时间戳重排。对时使用采集时间，不能选择当前最新 pose 代替对应时刻的变换。
 
-队列容量有界不是固定 RSS：地图最大 8,000,000 格，mapper 仍需私有 evidence/observations/工作栅格，
-integration 保留完成、live、baseline 快照，planner 保留至多两项；取结果时可临时持有一项。
-快照共用未修改块；每次完成生成快照可能比原先按发布周期取快照多复制块，统计不冒充零拷贝。
-应用主动永久保存历史快照仍会增长内存，需由应用限制；框架不会使外部引用失效。
+当前 PushScan 返回表示校验和接线尝试完成，不承诺一定计算；对时超限和计算过载通过 STATUS/RESOURCES 计数。
+SCAN 太快时，64 帧对时队列丢最旧未配对数据；计算通道满则拒收最新计算输入。每帧最多 2048 点。
+任务指令仍由业务 owner 串行处理，不与 scan 共用丢帧队列。多线程中间件应只序列化业务命令，不应把全部数据回调也串行化。
 
-## 取消、会话切换与关闭
+对外 ProductOutputs 在业务 owner 上执行。SensorFlow 为 odom/correction/TF 各保留一个最新待发值；
+不 Poll 时不会无限累积遥测，也不会停止算法路由。业务事件由 owner 直接产生，不被遥测合并。
+因此并发生产者不直接调用 stdio 对象，SetOutputs 也不与传感器线程争用可变回调。
+Poll 的每轮计算结果预算为 8，stdio 每条输入前和空闲轮询期间调用它。
 
-`CANCEL` 在 owner 改变业务状态，清空待对时和待计算输入并使当前 generation 失效，立即返回；
-它表示该任务已不再有效，不表示底层线程在返回瞬间已经停止。worker 在取消检查点结束当前更新。
-每个结果携带提交时的 generation；新 BEGIN/LOAD 改变 generation，迟到结果只增加 stale_results，
-不增加新会话 integrated、不覆盖地图、不发旧 finished。部分更新的 mapper 在下一会话计算前 Reset。
-已经发布给外部消费者的旧不可变快照可以继续读，消费者仍应核对其 generation。
+## 接受、完成、取消与关闭
 
-QUIT、EOF 或 IPC 失败会停止接收、请求取消、唤醒并 join worker，再解除/关闭其余组件；
-不隐式完成或保存地图，不使用 detach 或强制杀线程。计算延迟注入也可被取消/关闭唤醒。
-真实算法的协作取消点位于每条射线及每 256 个待更新格之间；Reset、分配和单次射线本身不可抢占。
-因此当前关闭可控但不是硬实时期限；以后接入不支持取消的第三方阻塞调用时必须重新评估其关闭契约。
+stdio v3 保持不变：FINISH 返回 ACCEPTED，随后由同 session 的 finished/failed 事件报告完成。
+finishing 期间忽略新 scan/reference，odom 继续接收和路由其有效输出；SAVE 只在 ready 成功。
+完成后冻结基准，后续 scan 可继续更新 live 图；这是当前产品流程，不是所有组件的统一业务状态机。
 
-## 验证与复现
+切换顺序是：关闭旧路由交付 → 记录未完成数量 → 使旧执行 generation 失效 → 打开新 generation。
+输入门禁和缓存操作使用同一条短锁形成明确边界；业务状态不由传感器线程修改。
+取消后的旧结果仍占原容量直到被取走；Poll 检查 generation 后只计 stale_results，不发布旧地图、不修改新会话统计。
+算法部分修改由下一代 Reset 清理；已发布不可变快照仍可供旧读者读取。
+
+Configure 完成后才启动输入生产者。Shutdown 可与输入调用并发：先关闭输入，后停止并 join 计算；
+后来的输入抛出“已关闭”。对象析构前调用方必须结束并 join 所有生产者，不能在对象销毁后继续调用成员方法。
+业务方法彼此仍不能并发调用；这里没有给整套 integration 加一把全局互斥锁。
+
+SAVE/LOAD/SNAPSHOT 和完整地图编码仍在业务 owner 同步运行，可能延迟下一条业务指令；
+其他线程的传感器交付和计算不因此持有业务锁，但结果未消费时会达到已声明容量。不能据此宣称硬实时或无限吞吐。
+
+## 验证
 
 ~~~sh
 cmake -S . -B build-product -DCMAKE_BUILD_TYPE=Release
 cmake --build build-product -j4
 ctest --test-dir build-product --output-on-failure
 python3 tests/build_isolation_test.py
-python3 tools/mapping/replay.py --dataset tf --scans 0 --finish-after 12267 --output build-product/async-result
-# 手动注入每次地图计算 1000 ms 的延迟（默认 0，最大 5000）
-./build-product/robot_runtime /tmp/existing-map-directory --map-delay-ms=1000
+python3 tools/mapping/replay.py --dataset tf --scans 0 --finish-after 12267 --output build-product/execution-result
 ~~~
 
-Python 回放持续接收事件，每 4 帧等待计算空闲，FINISH 后等同 session 的 finished 再 SAVE；
-这保证离线几何回归不因灌入速度而丢帧，不是实时吞吐成绩。过载测试有意不采用这类节流。
+- SDK execution_test 使用同一不可变输入连接两个独立通道：一个等待 10 秒，另一个正常完成；四个并发生产者压满慢通道，容量仍为 8。还检查处理异常、旧代结果、generation 禁止复用、关闭唤醒及关闭后的拒收。
+- concurrent_ingress_test 用两个真实输入线程与业务线程同时运行，地图计算延迟 5 秒；持续接收期间取消并切换 19 次会话，关闭后两个生产者收到明确拒收。
+- mapping_execution_test 核对结果/scan 引用总量、旧成功结果丢弃、部分取消后的 Reset、失败终态和业务回调线程。
+- 真实 IPC 测试保留慢计算、慢读、断连、EOF/QUIT、会话切换；独立 planner 测试验证 latest_pending 和共享数据不变。
+- Python 离线回放每 4 帧等待空闲，验证确定性地图内容；过载测试有意不节流，不能混作硬件吞吐结论。
 
-- `mapping_execution_test.cpp`：1000 帧不取结果，8 个完成项占满通道，992 个新任务被拒收；
-  weak_ptr 核实仅有 8 份 scan 被持有，丢弃旧结果后全部释放；owner 未 Poll 前没有地图回调。取消后开启新会话，8 个已成功完成的旧结果全部丢弃，新地图没有旧占据格。
-  回调线程检查、FINISH 两阶段及 5 秒延迟期间的快速输入/取消/关闭同时覆盖。
-- `mapping_execution_test.py`：真实管道注入 1 秒计算延迟，200 组数据与状态查询在 0.7 秒内返回；
-  队列最多 8 项。FINISH 等待中仍可 CANCEL/BEGIN；stdin 空闲时也能发布 finished。
-  QUIT/EOF/输出断连在 5 秒延迟期间均在 1 秒内退出。
-- mapper 单测验证取消部分射线后 Reset，再计算的栅格与未中断参考一致。
-- 原有慢读、持续不读、可靠队列溢出、保存/加载、共享快照和 TF 测试继续运行。
+SDK 5.1 新增 execution.hpp，不改变已有 SDK 数据布局；组件构建仍自动记录实际 SDK 身份。
+旧产品公开入口的 mapping_status 改为返回值快照，调用方应重编；不要跨线程持有可变状态引用。
+SDK 与 product 的输出机制不会无限保存历史快照；外部消费者若永久持有快照，其内存仍由消费者负责。
 
-这些时间阈值是当前测试环境的回归检查，不是实时调度保证。SDK 5.0 改变公开完成语义和状态布局，
-stdio v3 改变 FINISH 回执，旧客户端及旧 major 组件包需更新/重建。
-
-本次实测：15 项 CTest 与相同测试的 ASan/UBSan 均通过；五组件独立构建/安装、混合包构建、
-24 个公开头文件隔离编译通过。全量 13,631 帧、910 次校正，建图融合 12,099 帧，
-168 帧因初始 TF 未就绪跳过（与之前一致），完成后更新 1,364 帧；计算过载拒收为 0，通道最大持有 4 项。
-17 份落盘地图（含全部检查点、基准、实时及重载）与上一轮同步 IPC 回放逐字节一致。
-本次累计地图块复制 276.52 MiB；planner 持有上限 2、不一致为 0。
-产物：`build-product/async-verified/replay.html`、`summary.json`、`mapping-events.jsonl`。
-未新增 TSan 通过结论：此前当前 WSL 环境无法初始化 TSan；ASan/UBSan 不能替代数据竞争检测。
+本次验收：17 项常规测试和相同测试的 ASan/UBSan 通过；五组件独立安装、混合源码/包构建、
+25 个公开头文件隔离编译通过。全量回放 13,631 帧、910 次校正，计算过载拒收为 0，
+计算通道持有峰值 3 / 8，planner 峰值 2，读取不一致为 0。17 份地图文件与上一版逐字节一致。
+168 帧初始 TF 未就绪跳过与之前一致；结束前融合 12,099 帧、结束后更新 1,364 帧。
+产物：`build-product/execution-verified/replay.html` 和 `summary.json`。
+当前没有 TSan 通过结论（此前 WSL 初始化失败）；ASan/UBSan 和并发测试不等于证明不存在所有数据竞争。

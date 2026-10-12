@@ -33,7 +33,7 @@ roboframe_load_components()
 
 add_library(roboframe_integration
     integration/robot_integration.cpp integration/data_flow.cpp
-    integration/mapping_flow.cpp integration/pose_buffer.cpp integration/map_update_worker.cpp)
+    integration/mapping_flow.cpp integration/pose_buffer.cpp integration/sensor_flow.cpp)
 target_include_directories(roboframe_integration PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(roboframe_integration PUBLIC Roboframe::sdk
     PRIVATE Odom::component LidarMap::component MapUpdater::component MapServer::component Planner::component)
@@ -49,6 +49,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_executable(concurrent_ingress_test tests/concurrent_ingress_test.cpp)
+    target_link_libraries(concurrent_ingress_test PRIVATE roboframe_integration)
+    add_test(NAME concurrent_ingress_test COMMAND concurrent_ingress_test)
+    set_tests_properties(concurrent_ingress_test PROPERTIES TIMEOUT 10)
     add_executable(mapping_check tests/mapping_check.cpp)
     target_link_libraries(mapping_check PRIVATE roboframe_integration)
     add_test(NAME mapping_check COMMAND mapping_check)

@@ -13,7 +13,8 @@ struct MappingEvent {
     std::uint64_t generation = 0;
     std::string name;
 };
-// Invoked on the serialized integration caller thread. Must not block, throw or reenter.
+// Invoked on the business command/Poll owner, never on sensor producer or compute threads.
+// Sensor telemetry may coalesce to the latest value before Poll. Must not block, throw or reenter.
 // Receivers may retain immutable snapshots. Clear callbacks before destroying receivers.
 struct ProductOutputs {
     std::function<void(const TimedPose2D&)> odometry;

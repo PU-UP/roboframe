@@ -51,6 +51,7 @@ int main() {
     integration.PushScan(Scan(0)); // Data outside a session is ignored, not retroactively mapped.
     Check(integration.mapping_status().ignored == 1);
     integration.PushOdometry({0, {}});
+    integration.Poll();
     Check(emitted_odom == 1);
     integration.StartMapping(1);
     Reject([&] { integration.StartMapping(2); });

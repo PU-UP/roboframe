@@ -24,6 +24,11 @@ target_include_directories(roboframe_sdk INTERFACE
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
 if(BUILD_TESTING)
+    add_executable(execution_test tests/execution_test.cpp)
+    target_link_libraries(execution_test PRIVATE Roboframe::sdk)
+    set_target_properties(execution_test PROPERTIES CXX_STANDARD 14 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+    add_test(NAME execution_test COMMAND execution_test)
+    set_tests_properties(execution_test PROPERTIES TIMEOUT 10)
     add_executable(sdk_check tests/sdk_check.cpp)
     target_link_libraries(sdk_check PRIVATE Roboframe::sdk)
     set_target_properties(sdk_check PROPERTIES CXX_STANDARD 14 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)

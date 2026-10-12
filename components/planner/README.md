@@ -8,3 +8,5 @@ Activate/Deactivate/Submit 由 owner 串行调用；status/WaitIdle 可跨线程
 
 只依赖产品指定 SDK；支持独立构建、安装与 SOURCE/PACKAGE 接入。
 源码标识和实际编译 SDK 自动生成。SDK 版本跟随产品选择。
+
+异步执行复用 SDK execution.hpp，组件只定义读取处理函数与 latest_pending 策略，不再自行维护线程循环。

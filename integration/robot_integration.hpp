@@ -9,8 +9,9 @@
 #include <string>
 
 namespace roboframe {
-// Product entry point; all calls (including getters/Poll) belong to one owner thread.
-// Component assembly is private; output callbacks execute on this same owner.
+// Configure before starting producers; destroy only after producers have joined.
+// PushOdometry/PushScan/PushMapReference may run concurrently with each other and commands.
+// Commands, queries, SetOutputs and Poll have one business owner; output callbacks run there.
 class RobotIntegration {
 public:
     explicit RobotIntegration(std::string directory, std::chrono::milliseconds mapper_test_delay = std::chrono::milliseconds(0));
@@ -19,7 +20,7 @@ public:
     RobotIntegration& operator=(const RobotIntegration&) = delete;
     // Commit only after successful activation; failed configuration may be retried.
     void Configure(MappingOptions options);
-    void SetOutputs(ProductOutputs outputs); // Serialized with all other public calls.
+    void SetOutputs(ProductOutputs outputs); // Business owner only.
     MapView map_view(bool baseline) const;
     void StartMapping(std::uint64_t id);
     void FinishMapping(); // Accept finish; finished/failed event is emitted by Poll.
@@ -33,7 +34,7 @@ public:
     TransformStatus2D transforms() const;
     void PushScan(roboframe::Scan2DPtr scan);
     void Shutdown();
-    const MappingStatus& mapping_status() const;
+    MappingStatus mapping_status() const;
     std::size_t pending() const;
     GridSnapshot map() const; // Saved baseline captured by FINISH or LOAD.
     GridSnapshot live_map() const;

@@ -119,7 +119,7 @@ BUILD_TESTING=OFF 不要求 Python，不编译测试 main。
 
 ## 版本维护
 SDK 维护者只维护 sdk/VERSION；产品维护者在 cmake/Dependencies.cmake 选择 SDK
-精确版本与组件清单。当前使用 SDK 5.0，增加异步建图完成状态和计算资源统计；旧 major 组件包需要重建。
+精确版本与组件清单。当前使用 SDK 5.1，新增算法无关的有界执行通道；旧 major 组件包需要重建。
 component 不再有手写 VERSION 或 contract_version，也不自行填写 SDK 要求。
 源码标识和实际编译 SDK 自动生成，安装包携带原始记录；启动时只检查 SDK 兼容性。
 源码变化自动更新指纹，SDK 与产物记录不同则按兼容规则拒绝，不篡改旧包记录。

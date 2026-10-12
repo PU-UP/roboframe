@@ -16,7 +16,7 @@ stdio 借用公开入口。已完成 SDK/产品版本职责集中；组件源码
 Python 持续接收并分流。真实管道覆盖慢读合并、可靠队列溢出、断连、退订、EOF/关闭；见 [IPC 设计](docs/ipc.md)。
 当前地图 generation 是连接/进程内上下文，不冒充持久化地图身份。
 
-已完成按需异步执行：integration 保持单 owner，地图通道总容量 8，拒收最新过载输入；
+已完成统一执行边界：SDK ExecutionChannel 供地图计算和 planner 复用，传感器入口可并发，业务状态有序管理；
 FINISH 接受/完成分离，取消代际隔离和协作关闭已实现。慢计算、迟到结果、回调线程及真实 IPC 验收见 [执行模型](docs/execution.md)。
 后续触发：真实 SLAM/推理接入时分别评估计算执行边界；不把它们塞入地图串行通道，也不先做通用调度器。
 大地图编解码/文件保存成为实际延迟瓶颈时，再增加有界 I/O 任务；目前它们仍在 owner 同步执行。
@@ -56,8 +56,8 @@ interface 负责 IPC、解码/编码、边界校验和 SDK 数据转换；integr
 
 当前 READY/RES 响应和主动 EVENT 已分离。Impl::Publish 向进程内 planner 交付共享快照，同时通知 interface 地图更新；
 GET_MAP 按需编码完整快照。这两种发布不等同，进程内共享指针也不等于跨 IPC 零拷贝。
-回调与 integration 串行同线程，interface 使用非阻塞管道和有界队列；不允许组件工作线程直接并发写 stdout。
-地图计算已通过私有 MapUpdateWorker 异步执行，Poll 在产品执行边界汇集结果；禁止工作线程直接调用 interface 回调。
+对外回调在业务 owner 上执行，传感器输入不再限于该线程；interface 使用非阻塞管道和有界队列；不允许组件工作线程直接并发写 stdout。
+地图计算和 planner 使用同一个 SDK ExecutionChannel；SensorFlow 管理相关数据的短锁和 typed 路由，Poll 在业务边界汇集需要参与业务状态的结果。禁止计算/输入线程直接调用当前 interface 回调。
 
 map-updater 仍为增量栅格更新；未来接入回环或大幅校正时，需明确导航图重建/局部图清理策略，
 更新 TF 不会自动修正历史栅格，不能将当前方案当成全局地图回环一致性方案。

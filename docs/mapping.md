@@ -189,4 +189,4 @@ SDK 发布版本由 sdk/VERSION 管理；产品选择集中在 cmake/Dependencie
 组件依赖只存在于 integration 私有实现中；独立编译验证会实际移除组件与私有头文件，
 检查 interface 和 main 只靠 SDK 与公开入口能否通过编译。
 
-地图计算在私有 MapUpdateWorker 执行，完成由串行 Poll 汇集；详见 [执行模型](execution.md)。
+地图计算与 planner 复用 SDK ExecutionChannel；SensorFlow 接收并发输入，业务相关完成由 Poll 汇集；详见 [执行模型](execution.md)。

@@ -5,7 +5,7 @@
 ## 所有权与接线
 ~~~text
 IPC 解码 scan → shared_ptr<const Scan2D>
-                         ├─→ map-updater（专用计算通道串行读取，更新私有 evidence）
+                         ├─→ map-updater（SDK 执行通道串行读取，更新私有 evidence）
                          └─→ planner（发布地图时收到同一个 scan）
 map-updater → GridSnapshot ──→ integration 当前地图
                            ├─→ planner（独立线程）
@@ -18,7 +18,7 @@ planner 单元测试检查 scan 对象、点数组和地图对象的地址，确
 
 integration 仍负责配对 scan 与 odom，以及决定何时发布；地图内部更新和块复制由 component/SDK 存储处理。
 按传感器时间间隔 100 ms 发布，即数据时间最多 10 Hz；FINISH、WAIT_PLANNER 可强制刷新尾帧。
-离线回放每 4 帧等待计算通道排空，确保确定性；其吞吐，不代表实际硬件的 10 Hz 墙钟吞吐性能。并非每帧 scan 都送给 planner，
+离线回放每 4 帧等待计算通道排空，确保确定性；其吞吐不代表实际硬件的 10 Hz 墙钟吞吐性能。并非每帧 scan 都送给 planner，
 每次送入 planner 的 scan 与对应地图的时间戳一致。
 
 ## 地图快照
@@ -41,7 +41,7 @@ ReadOnlyPlannerComponent 是独立可构建/安装的组件。Submit 快速提�
 integration 配置 5 ms 读取间隔以模拟耗时消费者；正常构造默认不人为等待。
 它只验证读取，不生成路径。读取异常或不一致计入 inconsistent。
 
-最多持有一份正在读的输入和一份最新待处理输入。新输入替换旧待处理项，不打断当前读取。
+复用 ExecutionChannel，总持有上限为两项（含待取完成结果）。执行中最多一项、待处理最多一项；新输入替换旧待处理项，不打断当前读取。
 每项包含一个 scan 引用和一个地图引用；等待锁仅涉及提交、取走及状态更新，不覆盖整图读取。
 WaitIdle 返回时工作线程已释放输入引用；Deactivate 唤醒并加入线程，不遗留后台访问。
 完成等待时 received = completed + replaced，pending/active 均为零。
@@ -75,7 +75,7 @@ python3 tests/build_isolation_test.py
 python3 tools/mapping/replay.py --scans 0 --finish-after 12267 --output build-product/shared-data-result
 ~~~
 输出目录须不存在。浏览 replay.html 可对比基准/实时地图并查看资源指标；
-summary.json 和指令回执保留实际执行记录。当前 SDK 为 5.0，旧 major 的组件包需重建。
+summary.json 和指令回执保留实际执行记录。当前 SDK 为 5.1，旧 major 的组件包需重建。
 双向 IPC 地图通知与按需读取见 [输出设计](ipc.md)，跨进程序列化复制不包含在上述地图块复制计数中。
 
 历史同步执行版本的一次全量验收（非当前复制量）：13,631 帧，基准建图 12,267 帧，之后更新 1,364 帧；

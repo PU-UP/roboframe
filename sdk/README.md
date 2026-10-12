@@ -1,4 +1,4 @@
-# Roboframe SDK 5.0
+# Roboframe SDK 5.1
 interface、integration、component 共用的公开契约和小型基础设施。
 SDK 位于主目录的 sdk/，与 interfaces/、products/、components/ 并列；
 后两种复数目录是未来多产品布局，当前不为占位而搬动目录或创建空产品。
@@ -44,6 +44,7 @@ SDK 统一必要的输出数据语义，不据此要求所有算法采用同一�
 | 头文件 | 职责 |
 |---|---|
 | component.hpp / lifecycle.hpp | Activate、Deactivate、生命周期 |
+| execution.hpp | 可选 typed 有界执行通道、过载、取消、结果与异常交付；不包含算法/产品类型 |
 | task.hpp | 可选任务状态和 ID，不管理线程或产品流程 |
 | geometry2d.hpp | 微秒时间戳、米/弧度、T_odom_base |
 | scan2d.hpp | base_link 下只读二维命中点；不代表所有原始雷达消息 |
@@ -59,7 +60,7 @@ Scan2D 发布后生产者不得通过其他可写别名修改数据；消费者�
 现有 GridSpec 校验仍混有资源上限，已记入待办，不在本次扩大重构。
 
 SDK 不强制 Integration 基类或通用 AddData。无真实配置的组件不设空 Config。
-integration 单线程串行；地图算法由 integration 私有工作通道独占执行，planner 使用受限异步读取；各组件头文件声明并发、回调和异常语义。
+integration 的 typed 传感器入口可并发调用；业务状态由业务 owner 有序管理。地图计算和 planner 复用 ExecutionChannel，只有需要独立执行的通路才使用它。各组件头文件声明并发、回调和异常语义。
 日志 sink 不重入日志 API；其异常被日志层吞掉。日志及 planner 的跨线程入口有同步；SDK 类型不自动保证所有可变对象的线程安全。
 组件 tests 下的 main 可脱离框架运行，不维护两套相同示例。
 
@@ -116,3 +117,5 @@ cmake --install build-sdk --prefix /tmp/roboframe-sdk
 ~~~
 
 TF 契约见 [坐标链路](../docs/transforms.md)：TimedPose2D 固定为 T_odom_base，不能塞入全局校正 pose。
+
+SDK 5.1 新增 execution.hpp；具体使用、并发边界和生命周期见 [执行模型](../docs/execution.md)。

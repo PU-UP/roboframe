@@ -33,74 +33,67 @@ void RobotIntegration::CancelMapping() { Configured().CancelMapping(); }
 void RobotIntegration::SaveMap(const std::string& name) { Configured().SaveMap(name); }
 void RobotIntegration::SnapshotMap(const std::string& name) { Configured().SnapshotMap(name); }
 void RobotIntegration::LoadMap(const std::string& name) { Configured().LoadMap(name); }
-void RobotIntegration::PushOdometry(const TimedPose2D& pose) { Configured().PushOdometry(pose); }
-void RobotIntegration::PushMapReference(const MapPose2D& pose) { Configured().PushMapReference(pose); }
-TransformStatus2D RobotIntegration::transforms() const { return Configured().transforms_; }
-void RobotIntegration::PushScan(Scan2DPtr scan) { Configured().PushScan(std::move(scan)); }
+void RobotIntegration::PushOdometry(const TimedPose2D& pose) { Configured().inputs_.PushOdometry(pose); }
+void RobotIntegration::PushMapReference(const MapPose2D& pose) { Configured().inputs_.PushReference(pose); }
+TransformStatus2D RobotIntegration::transforms() const { return Configured().inputs_.status().transforms; }
+void RobotIntegration::PushScan(Scan2DPtr scan) { Configured().inputs_.PushScan(std::move(scan)); }
 void RobotIntegration::Shutdown() {
     if (!impl_ || !impl_->active_) return;
     impl_->Shutdown();
     if (outputs_.transforms) outputs_.transforms({});
     impl_->EmitMapping(MappingEventKind::stopped);
 }
-const MappingStatus& RobotIntegration::mapping_status() const { return Configured().status_; }
-std::size_t RobotIntegration::pending() const { return Configured().pending_.size() + Configured().in_flight_; }
+MappingStatus RobotIntegration::mapping_status() const { return Configured().Status(); }
+std::size_t RobotIntegration::pending() const {
+    const auto& impl = Configured();
+    const auto input = impl.inputs_.status();
+    return input.pending + input.submitted - impl.completed_;
+}
 GridSnapshot RobotIntegration::map() const { return Configured().frozen_; }
 GridSnapshot RobotIntegration::live_map() const { return Configured().live_; }
 DataFlowStatus RobotIntegration::data_flow_status() const { return Configured().Resources(); }
 void RobotIntegration::WaitPlanner() { Configured().WaitPlanner(); }
 
 RobotIntegration::Impl::Impl(MappingOptions options, std::string directory, ProductOutputs& outputs, std::chrono::milliseconds delay)
-    : outputs_(outputs), pose_buffer_({512, options.max_pose_gap_us}), odometry_([this](const TimedPose2D& pose) {
-          RouteOdometry(pose);
-      }), lidar_map_([this](const MapCorrection2D& value) {
-          correction_ = value; has_correction_ = true;
-          if (outputs_.correction) outputs_.correction(value);
-      }), mapper_(options.grid, delay), store_(std::move(directory)), frame_(options.grid.frame),
-      max_correction_age_us_(options.max_correction_age_us) {
-    if (max_correction_age_us_ <= 0 || max_correction_age_us_ > 60000000)
-        throw std::invalid_argument("invalid correction maximum age");
+    : outputs_(outputs), grid_(options.grid),
+      computation_(compute_capacity, [this, delay](const ScanWork& work, const Cancellation& cancel) {
+          if (!cancel.WaitFor(delay)) return MapResult{};
+          if (computed_generation_ != cancel.generation()) {
+              grid_.Reset(); computed_generation_ = cancel.generation();
+          }
+          const auto update = grid_.PushScan(work.scan, work.transforms, [&] { return cancel.canceled(); });
+          return MapResult{grid_.Snapshot(), update, grid_.copied_bytes()};
+      }), inputs_(options, [this](std::uint64_t generation, Scan2DPtr scan, ScanTransforms2D transforms) {
+          return computation_.Submit(generation, {std::move(scan), transforms});
+      }), store_(std::move(directory)), frame_(options.grid.frame) {
+    if (delay.count() < 0 || delay.count() > 5000) throw std::invalid_argument("invalid compute test delay");
     CheckComponent(odom::GetComponentInfo());
     CheckComponent(lidar_map::GetComponentInfo());
     CheckComponent(map_updater::GetComponentInfo());
     CheckComponent(map_server::GetComponentInfo());
     CheckComponent(planner::GetComponentInfo());
-    // If later activation fails, the planner member destructor joins its worker.
-    planner_.Activate();
-    store_.Activate();
-    odometry_.Activate();
-    lidar_map_.Activate();
+    planner_.Activate(); store_.Activate(); grid_.Activate();
     active_ = true;
-    ROBO_LOG_INFO("integration") << "modules active: odom + lidar-map -> map-updater -> planner/map-server; SDK "
-                             << ToString(sdk_version);
+    ROBO_LOG_INFO("integration") << "sensor routing and bounded compute active; SDK " << ToString(sdk_version);
 }
 RobotIntegration::Impl::~Impl() { Shutdown(); }
 void RobotIntegration::Impl::EmitMapping(MappingEventKind kind, const std::string& name) {
-    if (outputs_.mapping) outputs_.mapping({kind, status_, generation_, name});
+    if (outputs_.mapping) outputs_.mapping({kind, Status(), generation_, name});
 }
 void RobotIntegration::Impl::RequireActive() const {
     if (!active_) throw std::logic_error("integration stopped");
 }
 void RobotIntegration::Impl::Shutdown() {
     if (!active_) return;
-    // EOF/exit abandons pending work; it never silently finishes or saves a map.
+    const auto input = inputs_.Close();
+    const auto abandoned = input.pending + input.submitted - completed_;
+    inputs_.Shutdown(); // Closes concurrent ingress before joining any computation.
     if (status_.phase == MappingPhase::mapping || status_.phase == MappingPhase::finishing) {
-        status_.dropped += pending_.size() + in_flight_;
-        status_.drop_cancel += pending_.size() + in_flight_;
+        status_.dropped += abandoned; status_.drop_cancel += abandoned;
         status_.phase = MappingPhase::idle;
-    } else if (updating_) {
-        resources_.live_dropped += pending_.size() + in_flight_;
-    }
-    mapper_.Stop(); in_flight_ = 0;
-    planner_.Deactivate();
-    pending_.clear();
-    latest_scan_.reset();
-    updating_ = false;
-    odometry_.Deactivate();
-    lidar_map_.Deactivate();
-    transforms_ = {}; has_correction_ = false;
-    pose_buffer_.Clear();
-    store_.Deactivate();
-    active_ = false;
+    } else if (updating_) resources_.live_dropped += abandoned;
+    computation_.Stop(); completed_ = input.submitted;
+    planner_.Deactivate(); grid_.Deactivate(); store_.Deactivate();
+    latest_scan_.reset(); updating_ = false; active_ = false;
 }
 } // namespace roboframe

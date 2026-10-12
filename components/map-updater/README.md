@@ -15,6 +15,6 @@ CMake 自动计算源码指纹、记录编译 SDK；安装包 VERSION 是生成�
 Snapshot 共享 GridCells 的未修改块；同一版本复用同一个快照。后续更新按需复制受影响块，旧快照保持不变。
 
 执行契约：此组件为同步算法，不创建线程，所有调用必须由同一执行上下文串行访问。
-产品由 integration 的私有 MapUpdateWorker 承担排队和异步完成；独立 main 仍可直接调用。
+产品装配 SDK 的 ExecutionChannel 承担排队和异步完成；独立 main 仍可直接调用。
 PushScan 可传取消谓词，在执行该方法的线程检查；返回 true 时抛 UpdateCanceled。
 取消可能留下部分私有更新，必须 Reset 后才能复用，不能发布或继续使用这份中间状态。

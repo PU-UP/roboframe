@@ -30,21 +30,21 @@ void ReadOnlyPlannerComponent::Activate() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (active_) return;
     status_ = {};
-    stopping_ = false;
-    worker_ = std::thread(&ReadOnlyPlannerComponent::Run, this);
-    active_ = true;
+    execution_ = std::make_shared<Execution>(2,
+        [this](const Input& input, const roboframe::Cancellation& cancel) { return Read(input, cancel); },
+        roboframe::Overload::latest_pending);
+    execution_->Reset(1); active_ = true;
 }
 void ReadOnlyPlannerComponent::Deactivate() {
+    std::shared_ptr<Execution> execution;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!active_) return;
-        stopping_ = true;
-        pending_ = {};
+        active_ = false; execution = execution_;
     }
-    changed_.notify_all();
-    worker_.join();
+    execution->Stop();
     std::lock_guard<std::mutex> lock(mutex_);
-    active_ = false;
+    execution_.reset(); status_.pending = status_.active_read = false;
 }
 roboframe::Lifecycle ReadOnlyPlannerComponent::lifecycle() const {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -57,58 +57,53 @@ void ReadOnlyPlannerComponent::Submit(roboframe::GridSnapshot map, roboframe::Sc
     if (!map->revision || map->stamp_us < 0 || map->cells.size() != std::size_t(map->spec.width) * map->spec.height ||
         (scan && map->stamp_us != scan->stamp_us)) throw std::invalid_argument("planner input mismatch");
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!active_ || stopping_) throw std::logic_error("planner inactive");
+    if (!active_) throw std::logic_error("planner inactive");
+    Collect();
+    auto accepted = execution_->Submit(1, {map, scan});
+    // A completion may consume the last credit between Collect and Submit; collecting it is nonblocking.
+    if (accepted == roboframe::Admission::full) {
+        Collect(); accepted = execution_->Submit(1, {std::move(map), std::move(scan)});
+    }
+    if (accepted != roboframe::Admission::accepted && accepted != roboframe::Admission::replaced)
+        throw std::logic_error("planner admission unavailable");
     ++status_.received;
-    if (pending_.map) ++status_.replaced;
-    pending_ = {std::move(map), std::move(scan)};
-    status_.peak_retained = std::max(status_.peak_retained, std::uint64_t(1 + (busy_ ? 1 : 0)));
-    changed_.notify_all();
+    if (accepted == roboframe::Admission::replaced) ++status_.replaced;
+}
+void ReadOnlyPlannerComponent::Collect() const {
+    if (!execution_) return;
+    Execution::Result result;
+    while (execution_->Take(result)) {
+        if (result.canceled) continue;
+        ++status_.completed;
+        if (result.error || result.output.inconsistent) ++status_.inconsistent;
+        status_.revision = result.output.revision; status_.checksum = result.output.checksum;
+        status_.map_address = result.output.map_address;
+        status_.scan_address = result.output.scan_address; status_.scan_data_address = result.output.scan_data_address;
+    }
+    const auto work = execution_->status();
+    status_.peak_retained = work.peak;
+    status_.pending = work.queued != 0; status_.active_read = work.active != 0;
 }
 ReadStatus ReadOnlyPlannerComponent::status() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto result = status_;
-    result.active_read = busy_;
-    result.pending = bool(pending_.map);
-    return result;
+    Collect();
+    return status_;
 }
 void ReadOnlyPlannerComponent::WaitIdle() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    changed_.wait(lock, [&] { return !busy_ && !pending_.map; });
+    std::shared_ptr<Execution> execution;
+    { std::lock_guard<std::mutex> lock(mutex_); execution = execution_; }
+    if (execution) execution->WaitIdle();
+    std::lock_guard<std::mutex> lock(mutex_); Collect();
 }
-void ReadOnlyPlannerComponent::Run() {
-    for (;;) {
-        Input input;
-        {
-            std::unique_lock<std::mutex> lock(mutex_);
-            changed_.wait(lock, [&] { return stopping_ || pending_.map; });
-            if (stopping_) break;
-            input = std::move(pending_);
-            busy_ = true;
-        }
-        bool consistent = false;
-        std::uint64_t checksum = 0;
-        try {
-            checksum = Hash(*input.map, input.scan.get());
-            {
-                std::unique_lock<std::mutex> lock(mutex_);
-                changed_.wait_for(lock, read_delay_, [&] { return stopping_; });
-            }
-            consistent = checksum == Hash(*input.map, input.scan.get());
-        } catch (...) { consistent = false; }
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            ++status_.completed;
-            if (!consistent) ++status_.inconsistent;
-            status_.revision = input.map->revision;
-            status_.checksum = checksum;
-            status_.map_address = reinterpret_cast<std::uintptr_t>(input.map.get());
-            status_.scan_address = reinterpret_cast<std::uintptr_t>(input.scan.get());
-            status_.scan_data_address = input.scan ? reinterpret_cast<std::uintptr_t>(input.scan->hits.data()) : 0;
-            input = {}; // WaitIdle means the worker has released its resource references.
-            busy_ = false;
-        }
-        changed_.notify_all();
-    }
-    changed_.notify_all();
+ReadStatus ReadOnlyPlannerComponent::Read(const Input& input, const roboframe::Cancellation& cancel) const {
+    ReadStatus result;
+    result.checksum = Hash(*input.map, input.scan.get());
+    cancel.WaitFor(read_delay_);
+    result.inconsistent = result.checksum != Hash(*input.map, input.scan.get());
+    result.revision = input.map->revision;
+    result.map_address = reinterpret_cast<std::uintptr_t>(input.map.get());
+    result.scan_address = reinterpret_cast<std::uintptr_t>(input.scan.get());
+    result.scan_data_address = input.scan ? reinterpret_cast<std::uintptr_t>(input.scan->hits.data()) : 0;
+    return result;
 }
 } // namespace planner

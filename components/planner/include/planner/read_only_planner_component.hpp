@@ -4,10 +4,10 @@
 #include <roboframe/grid.hpp>
 #include <roboframe/scan2d.hpp>
 #include <chrono>
-#include <condition_variable>
+#include <roboframe/execution.hpp>
+#include <memory>
 #include <cstdint>
 #include <mutex>
-#include <thread>
 
 namespace planner {
 roboframe::ComponentInfo GetComponentInfo();
@@ -18,7 +18,7 @@ struct ReadStatus {
     bool active_read = false, pending = false;
 };
 // Resource-validation implementation: reads immutable inputs; no path planning.
-// Lifecycle/Submit calls are serialized by the owner. Status/WaitIdle are thread-safe.
+// Lifecycle changes have one owner. Submit/status/WaitIdle are thread-safe.
 // At most one active read + one latest pending input; Submit never waits for a read.
 class ReadOnlyPlannerComponent final : public roboframe::Component {
 public:
@@ -35,13 +35,13 @@ private:
         roboframe::GridSnapshot map;
         roboframe::Scan2DPtr scan;
     };
-    void Run();
+    using Execution = roboframe::ExecutionChannel<Input, ReadStatus>;
+    ReadStatus Read(const Input& input, const roboframe::Cancellation& cancel) const;
+    void Collect() const;
     const std::chrono::milliseconds read_delay_;
     mutable std::mutex mutex_;
-    std::condition_variable changed_;
-    std::thread worker_;
-    Input pending_;
-    ReadStatus status_;
-    bool active_ = false, stopping_ = false, busy_ = false;
+    std::shared_ptr<Execution> execution_;
+    mutable ReadStatus status_;
+    bool active_ = false;
 };
 } // namespace planner

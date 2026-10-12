@@ -38,7 +38,7 @@ int main() {
         Until([&] { return robot.data_flow_status().compute_results == 8; });
         const auto pressure = robot.data_flow_status();
         Check(pressure.compute_retained == 8 && pressure.compute_peak_retained == 8);
-        Check(pressure.compute_rejected == 992 && odoms == 1000 && maps == 0);
+        Check(pressure.compute_rejected == 992 && odoms == 0 && maps == 0);
         std::size_t retained = 0;
         for (const auto& input : inputs) if (!input.expired()) ++retained;
         Check(retained == 8); // Rejected payloads are actually released, not just omitted from counters.
@@ -47,7 +47,7 @@ int main() {
         Check(robot.mapping_status().drop_cancel == 8);
         robot.StartMapping(2);
         robot.Poll(); // Already-completed old results must not reach the new session.
-        Check(robot.data_flow_status().stale_results == 8 && maps == 0);
+        Check(robot.data_flow_status().stale_results == 8 && maps == 0 && odoms == 1);
         for (const auto& input : inputs) Check(input.expired());
         Check(robot.mapping_status().integrated == 0 && robot.pending() == 0);
         robot.PushOdometry({1000, {3, 0, 0}}); robot.PushScan(Scan(1000));
