@@ -37,11 +37,59 @@ const char* MappingPhaseName(MappingPhase phase) {
     return "unknown";
 }
 }
-StdioInterface::StdioInterface(std::istream& input, std::ostream& output, RobotIntegration& integration)
-    : input_(input), output_(output), integration_(integration) {}
+StdioInterface::StdioInterface(int input, int output, RobotIntegration& integration)
+    : channel_(input, output), integration_(integration) {}
 void StdioInterface::Send(const std::string& message) {
-    output_ << message << std::endl;
-    if (!output_) throw std::runtime_error("output channel closed");
+    if (request_id_) channel_.Queue("RES " + std::to_string(request_id_) + " " + message);
+}
+void StdioInterface::Event(const std::string& message, const std::string& key) {
+    if (subscribed_) channel_.Queue("EVENT " + std::to_string(++event_id_) + " " + message, key);
+}
+namespace {
+std::string PoseText(const Pose2D& pose) {
+    std::ostringstream out; out << std::setprecision(17) << pose.x << ' ' << pose.y << ' ' << pose.yaw;
+    return out.str();
+}
+std::string MapText(const MapView& view) {
+    const auto& g = *view.grid;
+    std::ostringstream out;
+    out << std::setprecision(17) << view.generation << ' ' << g.revision << ' ' << g.stamp_us << ' '
+        << (g.spec.frame == GridFrame::map ? "map" : "odom") << ' ' << g.spec.width << ' ' << g.spec.height
+        << ' ' << g.spec.resolution << ' ' << g.spec.origin_x << ' ' << g.spec.origin_y;
+    return out.str();
+}
+}
+ProductOutputs StdioInterface::Outputs() {
+    ProductOutputs output;
+    output.odometry = [this](const TimedPose2D& value) {
+        Event("ODOM " + std::to_string(value.stamp_us) + " " + PoseText(value.pose), "odom");
+    };
+    output.correction = [this](const MapCorrection2D& value) {
+        Event("CORRECTION " + std::to_string(value.stamp_us) + " " + PoseText(value.pose), "correction");
+    };
+    output.transforms = [this](const TransformStatus2D& value) {
+        Event(value.valid ? "TF valid " + std::to_string(value.transforms.odom_from_base.stamp_us) + " " +
+            std::to_string(value.transforms.map_from_odom.stamp_us) + " " + PoseText(MapFromBase(value.transforms)) :
+            "TF unavailable", "tf");
+    };
+    output.map = [this](const MapView& value) { Event("MAP " + MapText(value), "map"); };
+    output.mapping = [this](const MappingEvent& value) {
+        const char* name = "unknown";
+        switch (value.kind) {
+            case MappingEventKind::started: name = "started"; break;
+            case MappingEventKind::progress: name = "progress"; break;
+            case MappingEventKind::finished: name = "finished"; break;
+            case MappingEventKind::canceled: name = "canceled"; break;
+            case MappingEventKind::saved: name = "saved"; break;
+            case MappingEventKind::loaded: name = "loaded"; break;
+            case MappingEventKind::stopped: name = "stopped"; break;
+        }
+        Event("MAPPING " + std::string(name) + " " + std::to_string(request_id_) + " " +
+            std::to_string(value.status.session) + " " + std::to_string(value.generation) + " " +
+            std::to_string(value.status.integrated) + " " + std::to_string(value.status.dropped) + " " +
+            (value.name.empty() ? "-" : value.name), value.kind == MappingEventKind::progress ? "progress" : "");
+    };
+    return output;
 }
 std::string StdioInterface::Status() const {
     const auto& s = integration_.mapping_status();
@@ -57,6 +105,30 @@ bool StdioInterface::Dispatch(const std::string& line) {
     std::istringstream input(line);
     std::string command;
     if (!(input >> command)) throw std::invalid_argument("empty command");
+    if (!request_id_ && command != "ODOM" && command != "SCAN" && command != "MAP_POSE")
+        throw std::invalid_argument("DATA accepts only sensor inputs");
+    if (command == "SUBSCRIBE") {
+        std::string value; input >> value; End(input);
+        if (value != "ON" && value != "OFF") throw std::invalid_argument("expected ON or OFF");
+        subscribed_ = value == "ON";
+        if (!subscribed_) channel_.DropTelemetry();
+        Send("OK SUBSCRIBE"); return true;
+    }
+    if (command == "IPC_STATUS") { End(input); Send(channel_.Status()); return true; }
+    if (command == "GET_MAP") {
+        std::string role; input >> role; End(input);
+        if (role != "live" && role != "baseline") throw std::invalid_argument("expected live or baseline");
+        const auto view = integration_.map_view(role == "baseline");
+        if (!view.grid) throw std::logic_error("map unavailable");
+        std::string response = "MAP " + role + " " + MapText(view) + " ";
+        response.reserve(response.size() + 2 * view.grid->cells.size());
+        // shortcut: bounded full-map encoding is synchronous; use chunks for frequent large-map export.
+        const char* hex = "0123456789abcdef";
+        for (std::size_t i = 0; i < view.grid->cells.size(); ++i) {
+            const auto cell = view.grid->cells[i]; response += hex[cell >> 4]; response += hex[cell & 15];
+        }
+        Send(response); return true;
+    }
     if (command == "QUIT") {
         End(input);
         integration_.Shutdown();
@@ -168,32 +240,39 @@ bool StdioInterface::Dispatch(const std::string& line) {
     return true;
 }
 void StdioInterface::Run() {
-    Send("READY roboframe-v1");
-    std::string line;
-    bool oversized = false;
-    char ch;
-    while (input_.get(ch)) {
-        if (ch != '\n') {
-            if (line.size() < 65536) line.push_back(ch);
-            else oversized = true;
-            continue;
+    channel_.Queue("READY roboframe-v2");
+    try {
+        std::string line;
+        while (channel_.NextLine(line)) {
+            request_id_ = 0;
+            try {
+                if (line.size() > 65536) throw std::invalid_argument("line exceeds 65536 bytes");
+                std::istringstream envelope(line);
+                std::string kind; envelope >> kind;
+                if (kind == "REQ") {
+                    const auto id = Unsigned(envelope);
+                    if (!id || id <= last_request_id_) throw std::invalid_argument("request id must increase");
+                    request_id_ = last_request_id_ = id;
+                } else if (kind != "DATA") throw std::invalid_argument("expected REQ id or DATA");
+                std::string command; std::getline(envelope, command);
+                if (!Dispatch(command)) break;
+            } catch (const std::bad_alloc&) { throw; }
+            catch (const std::exception& error) {
+                if (request_id_) Send(std::string("ERROR ") + error.what());
+                else channel_.Queue(std::string("RES 0 ERROR ") + error.what());
+            }
         }
-        bool running = true;
-        try {
-            if (oversized) throw std::invalid_argument("line exceeds 65536 bytes");
-            running = Dispatch(line);
-        } catch (const std::bad_alloc&) {
-            throw; // Memory exhaustion is not a recoverable malformed request.
-        } catch (const std::exception& error) {
-            if (!output_) throw; // Broken IPC cannot be reported back on the same channel.
-            Send(std::string("ERROR ") + error.what());
-        }
-        line.clear();
-        oversized = false;
-        if (!running) return;
+        request_id_ = 0;
+        integration_.Shutdown();
+        channel_.Drain();
+    } catch (const std::invalid_argument& error) {
+        request_id_ = 0;
+        channel_.Queue(std::string("RES 0 ERROR ") + error.what());
+        integration_.Shutdown(); channel_.Drain();
+    } catch (...) {
+        integration_.SetOutputs({});
+        integration_.Shutdown();
+        throw;
     }
-    integration_.Shutdown();
-    if (!line.empty() || oversized) Send("ERROR incomplete line");
-    if (input_.bad()) throw std::runtime_error("input channel failed");
 }
 } // namespace roboframe

@@ -11,10 +11,12 @@ CONFIG = 'CONFIG 20 20 1 -5 -5 100\n'
 
 class MappingIPC(unittest.TestCase):
     def run_session(self, commands, directory):
+        commands = ''.join(f'REQ {i} {line}' for i, line in enumerate(commands.splitlines(keepends=True), 1))
         result = subprocess.run([BINARY, directory], input=commands, text=True,
                                 capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
-        return result.stdout.splitlines()
+        return [line.split(' ', 2)[2] if line.startswith('RES ') else line
+                for line in result.stdout.splitlines()]
 
     def test_workflow_freeze_and_load(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -50,7 +52,7 @@ class MappingIPC(unittest.TestCase):
             self.assertEqual(lines.count('OK CONFIG'), 1)
             self.assertIn('STATUS mapping 1 0 0 0 0 0 0 0 0 0 0 0 0', lines)
             self.assertEqual(list(pathlib.Path(directory).iterdir()), [])
-            self.assertEqual(self.run_session('QUIT\n', directory), ['READY roboframe-v1', 'BYE'])
+            self.assertEqual(self.run_session('QUIT\n', directory), ['READY roboframe-v2', 'BYE'])
 
     def test_live_map_and_shared_reader(self):
         with tempfile.TemporaryDirectory() as directory:

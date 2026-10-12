@@ -40,7 +40,7 @@ Continuous odom 不使用 Action 状态。建图的 idle/mapping/ready 属于产
 而复用 SDK 和能力组件。其他业务不必重启 integration。
 
 ## 各阶段
-1. main 先创建未配置的 integration 并注入 stdio；进程输出 READY roboframe-v1。
+1. main 先创建未配置的 integration 并注入 stdio；进程输出 READY roboframe-v2。
    CONFIG 调用 Configure，成功才提交组件装配；参数或资源初始化失败允许重试，成功后不允许重复配置。
 2. BEGIN id 调用 StartMapping，清空本次占据图和待匹配 scan，保留持续 odom 数据流。
 3. ODOM 经透传组件输出到 PoseBuffer；SCAN 在 integration 排队（最多 64）。
@@ -55,9 +55,10 @@ Continuous odom 不使用 Action 状态。建图的 idle/mapping/ready 属于产
    main 持有 integration；异常退出或忘记显式关闭时，析构负责清理。
 
 ## IPC
-每行不超过 65536 字节，stdout 只用于协议，stderr 为日志。
-所有请求先完整解析再执行；非法参数返回 ERROR；输出通道断开时退出。
-接口串行，尚无网络安全、并发或多客户端语义。
+输入每行不超过 65536 字节，stdout 只用于协议，stderr 为日志。
+下表列出命令体：业务请求需加 `REQ <递增ID>`，传感器可加 `DATA`；裸命令不再接受。
+响应是 `RES <ID> ...`，主动输出是 `EVENT <seq> ...`。SUBSCRIBE、GET_MAP 与背压/关闭语义见 [双向 IPC](ipc.md)。
+接口串行，使用非阻塞管道；尚无网络安全或多客户端语义。
 
 ~~~text
 CONFIG width height resolution origin_x origin_y max_pose_gap_us

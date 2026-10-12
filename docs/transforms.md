@@ -56,12 +56,13 @@ RecordedLidarMapComponent 是独立 SOURCE/PACKAGE 组件，只依赖 SDK，可�
 - odom 同步等待由 integration 负责；lidar-map 与 mapper 不各存一份大 scan。两者顺序读取同一个 Scan2DPtr，
   planner 在地图发布时获得同一对象；payload 不复制。TF 只按值复制几个标量，没必要给小结构套 shared_ptr。
 - 新建图会话、取消、加载、关闭会清理对应校正上下文。加载 map 不会产生 TF 或冒充定位成功。
-- component 的“发布”是同步 typed 回调，interface 对外仍是请求/响应。本轮未实现通用异步 IPC 事件推送，
-  这项仍在 TODO；TF 查询表示最近处理 scan 的变换，不代表当前墙钟时刻的定位健康状态。
+- component 的发布是同步 typed 回调；integration 的具名输出经 interface 变为主动事件，详见 [双向 IPC](ipc.md)。
+  TF 查询/事件表示最近处理 scan 的变换，不代表当前墙钟时刻的定位健康状态。odom 独立随输入发布。
 
 ## 协议与持久化
 
-原有 CONFIG 不变，明确表示 odom-frame 本地堆叠。增加可选尾部：
+以下是命令体，stdio v2 需加 REQ ID（传感器也可用 DATA），见 [线协议](ipc.md)。
+CONFIG 无 MAP_TF 尾部时表示 odom-frame 本地堆叠：
 ~~~text
 CONFIG width height resolution origin_x origin_y max_odom_gap_us MAP_TF max_correction_age_us
 MAP_POSE stamp_us x y yaw

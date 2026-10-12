@@ -11,7 +11,7 @@
 namespace roboframe {
 // Private assembly shared only by the integration implementation files.
 struct RobotIntegration::Impl {
-    Impl(MappingOptions options, std::string directory);
+    Impl(MappingOptions options, std::string directory, ProductOutputs& outputs);
     ~Impl();
     void StartMapping(std::uint64_t id);
     void FinishMapping();
@@ -29,6 +29,9 @@ struct RobotIntegration::Impl {
     void Publish(const Scan2DPtr& scan, bool force = false);
     void WaitPlanner();
     DataFlowStatus Resources() const;
+    void EmitMapping(MappingEventKind kind, const std::string& name = {});
+    ProductOutputs& outputs_;
+    std::uint64_t generation_ = 0;
     PoseBuffer pose_buffer_;
     odom::PassthroughOdomComponent odometry_;
     lidar_map::RecordedLidarMapComponent lidar_map_;

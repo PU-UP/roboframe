@@ -14,7 +14,12 @@ RobotIntegration::RobotIntegration(std::string directory) : map_directory_(std::
 RobotIntegration::~RobotIntegration() = default;
 void RobotIntegration::Configure(MappingOptions options) {
     if (impl_) throw std::logic_error("already configured");
-    impl_ = std::make_unique<Impl>(options, map_directory_);
+    impl_ = std::make_unique<Impl>(options, map_directory_, outputs_);
+}
+void RobotIntegration::SetOutputs(ProductOutputs outputs) { outputs_ = std::move(outputs); }
+MapView RobotIntegration::map_view(bool baseline) const {
+    const auto& impl = Configured();
+    return {impl.generation_, baseline ? impl.frozen_ : impl.live_};
 }
 RobotIntegration::Impl& RobotIntegration::Configured() const {
     if (!impl_) throw std::logic_error("CONFIG required");
@@ -30,7 +35,12 @@ void RobotIntegration::PushOdometry(const TimedPose2D& pose) { Configured().Push
 void RobotIntegration::PushMapReference(const MapPose2D& pose) { Configured().PushMapReference(pose); }
 TransformStatus2D RobotIntegration::transforms() const { return Configured().transforms_; }
 void RobotIntegration::PushScan(Scan2DPtr scan) { Configured().PushScan(std::move(scan)); }
-void RobotIntegration::Shutdown() { if (impl_) impl_->Shutdown(); }
+void RobotIntegration::Shutdown() {
+    if (!impl_ || !impl_->active_) return;
+    impl_->Shutdown();
+    if (outputs_.transforms) outputs_.transforms({});
+    impl_->EmitMapping(MappingEventKind::stopped);
+}
 const MappingStatus& RobotIntegration::mapping_status() const { return Configured().status_; }
 std::size_t RobotIntegration::pending() const { return Configured().pending_.size(); }
 GridSnapshot RobotIntegration::map() const { return Configured().frozen_; }
@@ -38,11 +48,12 @@ GridSnapshot RobotIntegration::live_map() const { return Configured().live_; }
 DataFlowStatus RobotIntegration::data_flow_status() const { return Configured().Resources(); }
 void RobotIntegration::WaitPlanner() { Configured().WaitPlanner(); }
 
-RobotIntegration::Impl::Impl(MappingOptions options, std::string directory)
-    : pose_buffer_({512, options.max_pose_gap_us}), odometry_([this](const TimedPose2D& pose) {
+RobotIntegration::Impl::Impl(MappingOptions options, std::string directory, ProductOutputs& outputs)
+    : outputs_(outputs), pose_buffer_({512, options.max_pose_gap_us}), odometry_([this](const TimedPose2D& pose) {
           RouteOdometry(pose);
       }), lidar_map_([this](const MapCorrection2D& value) {
           correction_ = value; has_correction_ = true;
+          if (outputs_.correction) outputs_.correction(value);
       }), grid_(options.grid), store_(std::move(directory)), frame_(options.grid.frame),
       max_correction_age_us_(options.max_correction_age_us) {
     if (max_correction_age_us_ <= 0 || max_correction_age_us_ > 60000000)
@@ -63,6 +74,9 @@ RobotIntegration::Impl::Impl(MappingOptions options, std::string directory)
                              << ToString(sdk_version);
 }
 RobotIntegration::Impl::~Impl() { Shutdown(); }
+void RobotIntegration::Impl::EmitMapping(MappingEventKind kind, const std::string& name) {
+    if (outputs_.mapping) outputs_.mapping({kind, status_, generation_, name});
+}
 void RobotIntegration::Impl::RequireActive() const {
     if (!active_) throw std::logic_error("integration stopped");
 }

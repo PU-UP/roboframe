@@ -1,4 +1,4 @@
-# Roboframe SDK 4.0
+# Roboframe SDK 4.1
 interface、integration、component 共用的公开契约和小型基础设施。
 SDK 位于主目录的 sdk/，与 interfaces/、products/、components/ 并列；
 后两种复数目录是未来多产品布局，当前不为占位而搬动目录或创建空产品。
@@ -47,8 +47,9 @@ SDK 统一必要的输出数据语义，不据此要求所有算法采用同一�
 | task.hpp | 可选任务状态和 ID，不管理线程或产品流程 |
 | geometry2d.hpp | 微秒时间戳、米/弧度、T_odom_base |
 | scan2d.hpp | base_link 下只读二维命中点；不代表所有原始雷达消息 |
-| grid.hpp / grid_cells.hpp | odom 系二维栅格、4 KiB 分块写时复制、只读快照 |
+| grid.hpp / grid_cells.hpp | 显式 odom/map 系二维栅格、4 KiB 分块写时复制、只读快照 |
 | data_flow.hpp | 产品对外的数据共享资源统计 |
+| outputs.hpp | 产品具名输出、建图事件、进程内地图上下文；不含传输或事件总线 |
 | mapping.hpp | 可选建图公开参数与状态，不规定产品工作流 |
 | log.hpp | ROBO_LOG_INFO 等日志，默认 stderr，可替换 sink |
 | version.hpp | SDK 兼容核对与组件源码标识，不保证二进制 ABI |
@@ -73,7 +74,7 @@ component 开发者不维护 SDK 版本、组件发布数字或独立 contract_v
 
 SDK 2.0 已移除独立契约版本；SDK 3.0 将 Grid::cells 改为分块写时复制，
 Scan2D 改为只能移动而不能复制。SDK 4.0 增加明确的 TF 数据结构、GridSpec.frame 和 mapper 完整变换入参。
-这些是公开接口变化，旧组件开发包必须重建。
+这些 major 版本的公开接口变化要求旧组件开发包重建。SDK 4.1 仅新增 outputs.hpp，未修改现有组件数据布局。
 Scan2DPtr 和 GridSnapshot 跨模块只读共享；具体所有权与更新约束见
 [数据共享说明](../docs/data-sharing.md)。
 产品配置阶段会拒绝缺少构建元数据的旧包。

@@ -75,7 +75,8 @@ python3 tests/build_isolation_test.py
 python3 tools/mapping/replay.py --scans 0 --finish-after 12267 --output build-product/shared-data-result
 ~~~
 输出目录须不存在。浏览 replay.html 可对比基准/实时地图并查看资源指标；
-summary.json 和指令回执保留实际执行记录。当前 SDK 为 4.0，所有组件开发包需重建。
+summary.json 和指令回执保留实际执行记录。当前 SDK 为 4.1；4.0 之前的组件包需按新存储与 TF 契约重建。
+双向 IPC 地图通知与按需读取见 [输出设计](ipc.md)，跨进程序列化复制不包含在上述地图块复制计数中。
 
 一次全量验收：13,631 帧，基准建图 12,267 帧，之后更新 1,364 帧；
 实时地图相对基准变化 37,315 个格，基准文件与改造前逐字节一致。

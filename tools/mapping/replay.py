@@ -8,7 +8,9 @@ import hashlib
 import json
 import math
 from pathlib import Path
-import select
+import queue
+import threading
+from collections import Counter
 import struct
 import subprocess
 import zlib
@@ -167,38 +169,96 @@ def png(grid):
 
 
 class Host:
+    """One request caller; one continuous reader drains replies and unsolicited events."""
     def __init__(self, binary, directory, label):
         self.log = (directory / (label + '-stderr.log')).open('w')
         self.requests = gzip.open(directory / (label + '-input.txt.gz'), 'wt')
         self.events = (directory / (label + '-events.jsonl')).open('w')
+        self.responses = queue.Queue(maxsize=8)
+        self.event_counts = Counter()
+        self.request_id = 0
         self.process = subprocess.Popen([str(binary), str(directory)], stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, stderr=self.log, text=True, bufsize=1)
+        self.reader = threading.Thread(target=self._read, name='roboframe-output')
+        self.reader.start()
         try:
-            if self.receive() != 'READY roboframe-v1':
+            if self.receive() != 'READY roboframe-v2':
                 raise RuntimeError('mapping host not ready')
+            self.send('SUBSCRIBE ON')
         except Exception:
             self.close()
             raise
 
-    def receive(self):
-        if not select.select([self.process.stdout], [], [], 30)[0]:
-            raise TimeoutError('mapping host response timeout')
-        response = self.process.stdout.readline()
-        if not response:
-            raise RuntimeError('mapping host terminated; inspect stderr log')
-        return response.rstrip('\n')
+    def _read(self):
+        last_event = 0
+        try:
+            for line in self.process.stdout:
+                line = line.rstrip('\n')
+                self.events.write(json.dumps(dict(message=line)) + '\n')
+                if line.startswith('EVENT '):
+                    fields = line.split()
+                    sequence = int(fields[1])
+                    if sequence <= last_event:
+                        raise RuntimeError('unordered event sequence')
+                    last_event = sequence
+                    self.event_counts[fields[2]] += 1
+                    if fields[2] == 'MAPPING':
+                        self.event_counts['mapping_' + fields[3]] += 1
+                else:
+                    self.responses.put_nowait(line)
+        except Exception as error:
+            try:
+                self.responses.put_nowait(error)
+            except queue.Full:
+                self.process.kill()
+        finally:
+            try:
+                self.responses.put_nowait(RuntimeError('mapping host output closed'))
+            except queue.Full:
+                pass
 
-    def send(self, command, record=None):
-        self.requests.write(command + '\n')
-        self.process.stdin.write(command + '\n')
+    def receive(self):
+        try:
+            response = self.responses.get(timeout=30)
+        except queue.Empty:
+            raise TimeoutError('mapping host response timeout')
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    def send(self, command):
+        self.request_id += 1
+        wire = f'REQ {self.request_id} {command}\n'
+        self.requests.write(wire)
+        self.process.stdin.write(wire)
         self.process.stdin.flush()
         response = self.receive()
-        self.events.write(json.dumps(dict(command=command.split()[0], response=response,
-            source_line=record['line'] if record else None,
-            source_stamp_us=record['stamp'] if record else None)) + '\n')
+        prefix = f'RES {self.request_id} '
+        if not response.startswith(prefix):
+            raise RuntimeError('unexpected response: ' + response[:200])
+        response = response[len(prefix):]
         if response.startswith('ERROR'):
             raise RuntimeError(response)
         return response
+
+    def push(self, command):
+        wire = 'DATA ' + command + '\n'
+        self.requests.write(wire)
+        self.process.stdin.write(wire)
+        self.process.stdin.flush()
+
+    def map(self, role):
+        fields = self.send('GET_MAP ' + role).split()
+        if len(fields) != 12 or fields[:2] != ['MAP', role]:
+            raise RuntimeError('malformed map response')
+        generation, revision, stamp = map(int, fields[2:5])
+        width, height = map(int, fields[6:8])
+        cells = bytes.fromhex(fields[11])
+        if len(cells) != width * height or not generation:
+            raise RuntimeError('invalid map payload')
+        return dict(generation=generation, revision=revision, stamp_us=stamp, frame=fields[5],
+                    width=width, height=height, resolution=float(fields[8]),
+                    origin=list(map(float, fields[9:11])), cells=cells)
 
     def status(self):
         values = self.send('STATUS').split()
@@ -219,6 +279,9 @@ class Host:
             self.process.kill()
         self.process.wait(timeout=5)
         self.process.stdin.close()
+        self.reader.join(timeout=5)
+        if self.reader.is_alive():
+            raise RuntimeError('output reader did not stop')
         self.process.stdout.close()
         self.log.close()
         self.requests.close()
@@ -303,15 +366,15 @@ def run(args):
         for record in records:
             t = record['stamp'] - start_us
             if record['kind'] == 'odom':
-                host.send('ODOM ' + str(t) + ' ' + ' '.join(format(v, '.17g') for v in record['pose']), record)
+                host.push('ODOM ' + str(t) + ' ' + ' '.join(format(v, '.17g') for v in record['pose']))
                 continue
             if scan_number == finish and not finished:
                 before, final_grid = finish_mapping()
                 finished = True
             if 'map_reference' in record:
-                host.send('MAP_POSE ' + str(t) + ' ' + ' '.join(format(v, '.17g') for v in record['map_reference']), record)
-            host.send('SCAN ' + str(t) + ' ' + str(len(record['hits'])) + ' ' +
-                      ' '.join(format(v, '.12g') for point in record['hits'] for v in point), record)
+                host.push('MAP_POSE ' + str(t) + ' ' + ' '.join(format(v, '.17g') for v in record['map_reference']))
+            host.push('SCAN ' + str(t) + ' ' + str(len(record['hits'])) + ' ' +
+                      ' '.join(format(v, '.12g') for point in record['hits'] for v in point))
             scan_number += 1
             displayed = record.get('display_pose', record['pose'])
             trajectory.append([t, displayed[0] if displayed else None, displayed[1] if displayed else None])
@@ -369,11 +432,21 @@ def run(args):
                 resources['planner_revision'] != live_grid['revision'] or
                 resources['planner_completed'] + resources['planner_replaced'] != resources['planner_received']):
             raise RuntimeError('shared-resource or continued-update check failed')
+        for role, expected in [('baseline', final_grid), ('live', live_grid)]:
+            received = host.map(role)
+            if any(received[key] != expected[key] for key in expected):
+                raise RuntimeError('IPC map differs from saved snapshot')
         host.send('QUIT')
         if host.process.wait(timeout=5) != 0:
             raise RuntimeError('mapping host failed')
     finally:
         host.close()
+
+    if not all(host.event_counts[key] for key in ['ODOM', 'MAP', 'TF', 'mapping_started',
+                                                  'mapping_finished', 'mapping_saved', 'mapping_stopped']):
+        raise RuntimeError('missing unsolicited output')
+    if use_tf and not host.event_counts['CORRECTION']:
+        raise RuntimeError('missing global correction output')
 
     reload_host = Host(args.binary.resolve(), args.output.resolve(), 'reload')
     try:
@@ -391,6 +464,7 @@ def run(args):
                    dataset_sha256=dataset['sha256'], reference_frame='map' if use_tf else dataset['frame'],
                    corrected_sha256=DATASETS['corrected']['sha256'] if use_tf else None,
                    raw_sha256=SHA256 if use_tf else None,
+                   ipc_events=dict(host.event_counts), ipc_map_verified=True,
                    tf_checks=len(tf_trace), reference_checks=sum(f['paired_reference'] for f in tf_trace),
                    max_tf_error_m=max((f['error_m'] for f in tf_trace), default=0),
                    map_frame=live_grid['frame'],

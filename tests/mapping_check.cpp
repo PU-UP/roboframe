@@ -27,11 +27,21 @@ int main() {
     Reject([&] { integration.StartMapping(1); });
     integration.Shutdown(); // No components exist before configuration.
     Reject([&] { integration.Configure({{0, 20, 1, -5, -5}, 100}); });
+    std::size_t emitted_odom = 0, emitted_maps = 0, emitted_events = 0;
+    roboframe::GridSnapshot received_map;
+    roboframe::ProductOutputs outputs;
+    outputs.odometry = [&](const roboframe::TimedPose2D&) { ++emitted_odom; };
+    outputs.map = [&](const roboframe::MapView& value) {
+        Check(value.generation > 0); received_map = value.grid; ++emitted_maps;
+    };
+    outputs.mapping = [&](const roboframe::MappingEvent&) { ++emitted_events; };
+    integration.SetOutputs(std::move(outputs));
     integration.Configure({{20, 20, 1, -5, -5}, 100});
     Reject([&] { integration.Configure({{20, 20, 1, -5, -5}, 100}); });
     integration.PushScan(Scan(0)); // Data outside a session is ignored, not retroactively mapped.
     Check(integration.mapping_status().ignored == 1);
     integration.PushOdometry({0, {}});
+    Check(emitted_odom == 1);
     integration.StartMapping(1);
     Reject([&] { integration.StartMapping(2); });
     Reject([&] { integration.SaveMap("before_finish"); });
@@ -41,6 +51,7 @@ int main() {
     Check(integration.pending() == 0 && integration.mapping_status().integrated == 1);
     integration.FinishMapping();
     const auto frozen = integration.map();
+    Check(received_map == integration.live_map() && emitted_maps > 0 && emitted_events > 0);
     Check(frozen->cells[5 * 20 + 8] == 0); // pose at t50 x=1, hit x=3; not latest x=2.
     integration.SaveMap("first");
     Reject([&] { integration.SaveMap("first"); });
@@ -76,6 +87,7 @@ int main() {
     integration.FinishMapping();
     Check(integration.mapping_status().integrated == 1 && integration.mapping_status().dropped == 1);
     Check(frozen->revision == 1); // Old snapshot survives new sessions.
+    integration.SetOutputs({});
     integration.Shutdown();
     integration.Shutdown();
     Reject([&] { integration.StartMapping(4); });

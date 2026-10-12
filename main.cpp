@@ -11,8 +11,11 @@ int main(int argc, char** argv) {
         std::signal(SIGPIPE, SIG_IGN);
 #endif
         roboframe::RobotIntegration integration(argv[1]);
-        roboframe::StdioInterface interface(std::cin, std::cout, integration);
-        interface.Run();
+        roboframe::StdioInterface interface(0, 1, integration);
+        integration.SetOutputs(interface.Outputs());
+        try { interface.Run(); }
+        catch (...) { integration.SetOutputs({}); throw; }
+        integration.SetOutputs({});
     } catch (const std::exception& error) {
         ROBO_LOG_ERROR("robot-runtime") << error.what();
         return 1;

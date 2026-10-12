@@ -20,6 +20,9 @@ void RobotIntegration::Impl::StartMapping(std::uint64_t id) {
     status_ = {};
     status_.session = id;
     status_.phase = MappingPhase::mapping;
+    ++generation_;
+    if (outputs_.transforms) outputs_.transforms({});
+    EmitMapping(MappingEventKind::started);
     ROBO_LOG_INFO("mapping") << "begin session=" << id;
 }
 void RobotIntegration::Impl::FinishMapping() {
@@ -31,6 +34,7 @@ void RobotIntegration::Impl::FinishMapping() {
     frozen_ = std::move(snapshot);
     Publish(latest_scan_, true);
     status_.phase = MappingPhase::ready;
+    EmitMapping(MappingEventKind::finished);
     ROBO_LOG_INFO("mapping") << "finished integrated=" << status_.integrated
         << " dropped=" << status_.dropped << "; baseline frozen, live updates continue";
 }
@@ -44,13 +48,16 @@ void RobotIntegration::Impl::CancelMapping() {
     updating_ = false;
     lidar_map_.Reset(); has_correction_ = false; transforms_ = {};
     latest_scan_.reset();
-    frozen_.reset();
+    frozen_.reset(); live_.reset();
+    if (outputs_.transforms) outputs_.transforms({});
+    EmitMapping(MappingEventKind::canceled);
     ROBO_LOG_INFO("mapping") << "canceled session=" << status_.session;
 }
 void RobotIntegration::Impl::SaveMap(const std::string& name) {
     RequireActive();
     if (status_.phase != MappingPhase::ready) throw std::logic_error("finish or load before save");
     store_.Save(name, frozen_);
+    EmitMapping(MappingEventKind::saved, name);
     ROBO_LOG_INFO("mapping") << "saved " << name << " revision=" << frozen_->revision;
 }
 void RobotIntegration::Impl::SnapshotMap(const std::string& name) {
@@ -74,5 +81,9 @@ void RobotIntegration::Impl::LoadMap(const std::string& name) {
     planner_.Submit(live_);
     ++resources_.publications;
     status_.phase = MappingPhase::ready;
+    ++generation_;
+    if (outputs_.transforms) outputs_.transforms({});
+    if (outputs_.map) outputs_.map({generation_, live_});
+    EmitMapping(MappingEventKind::loaded, name);
 }
 } // namespace roboframe

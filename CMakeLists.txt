@@ -37,7 +37,7 @@ add_library(roboframe_integration
 target_include_directories(roboframe_integration PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(roboframe_integration PUBLIC Roboframe::sdk
     PRIVATE Odom::component LidarMap::component MapUpdater::component MapServer::component Planner::component)
-add_library(roboframe_stdio interface/stdio_interface.cpp)
+add_library(roboframe_stdio interface/stdio_interface.cpp interface/stdio_channel.cpp)
 target_include_directories(roboframe_stdio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(roboframe_stdio PRIVATE roboframe_integration)
 add_executable(robot_runtime main.cpp)
@@ -59,5 +59,7 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/mapping_ipc_check.py $<TARGET_FILE:robot_runtime>)
     add_test(NAME mapping_replay_check COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/mapping_replay_check.py)
-    set_tests_properties(mapping_ipc_check PROPERTIES TIMEOUT 30)
+    add_test(NAME stdio_publication_test COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/stdio_publication_test.py $<TARGET_FILE:robot_runtime>)
+    set_tests_properties(mapping_ipc_check stdio_publication_test PROPERTIES TIMEOUT 30)
 endif()

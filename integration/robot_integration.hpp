@@ -3,6 +3,7 @@
 #include <roboframe/mapping.hpp>
 #include <roboframe/data_flow.hpp>
 #include <roboframe/transforms2d.hpp>
+#include <roboframe/outputs.hpp>
 #include <memory>
 #include <string>
 
@@ -16,6 +17,8 @@ public:
     RobotIntegration& operator=(const RobotIntegration&) = delete;
     // Commit only after successful activation; failed configuration may be retried.
     void Configure(MappingOptions options);
+    void SetOutputs(ProductOutputs outputs); // Serialized with all other public calls.
+    MapView map_view(bool baseline) const;
     void StartMapping(std::uint64_t id);
     void FinishMapping();
     void CancelMapping();
@@ -37,6 +40,7 @@ private:
     struct Impl;
     Impl& Configured() const;
     std::string map_directory_;
+    ProductOutputs outputs_; // Outlives Impl; callbacks never run from its destructor.
     std::unique_ptr<Impl> impl_;
 };
 } // namespace roboframe

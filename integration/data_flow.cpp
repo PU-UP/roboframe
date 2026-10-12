@@ -8,6 +8,7 @@ void RobotIntegration::Impl::PushOdometry(const TimedPose2D& pose) {
 }
 void RobotIntegration::Impl::RouteOdometry(const TimedPose2D& pose) {
     pose_buffer_.PushOdometry(pose);
+    if (outputs_.odometry) outputs_.odometry(pose);
     if (updating_) Drain(false);
 }
 void RobotIntegration::Impl::PushMapReference(const MapPose2D& pose) {
@@ -45,6 +46,7 @@ void RobotIntegration::Impl::Drain(bool finishing) {
                 transforms_ = {};
                 if (frame_ == GridFrame::map && (!has_correction_ || correction_.stamp_us > pose.stamp_us ||
                         pose.stamp_us - correction_.stamp_us > max_correction_age_us_)) {
+                    if (outputs_.transforms) outputs_.transforms(transforms_);
                     ++resources_.tf_dropped;
                     if (status_.phase == MappingPhase::mapping) { ++status_.dropped; ++status_.drop_sync; }
                     else { ++resources_.live_dropped; }
@@ -52,6 +54,7 @@ void RobotIntegration::Impl::Drain(bool finishing) {
                     continue;
                 }
                 transforms_ = {true, {pose, frame_ == GridFrame::map ? correction_ : MapCorrection2D{pose.stamp_us, {}}}};
+                if (outputs_.transforms) outputs_.transforms(transforms_);
                 const auto update = grid_.PushScan(pending_.front(), transforms_.transforms);
                 if (status_.phase == MappingPhase::mapping) {
                     ++status_.integrated;
@@ -85,6 +88,8 @@ void RobotIntegration::Impl::Publish(const Scan2DPtr& scan, bool force) {
     last_publication_us_ = scan->stamp_us;
     ++resources_.shared_scans;
     ++resources_.publications;
+    if (outputs_.map) outputs_.map({generation_, live_});
+    if (status_.phase == MappingPhase::mapping) EmitMapping(MappingEventKind::progress);
 }
 void RobotIntegration::Impl::WaitPlanner() {
     RequireActive();

@@ -169,10 +169,12 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
     (public / 'interface').mkdir()
     copy(relocated / 'include/roboframe', public / 'include/roboframe')
     for name in ['integration/robot_integration.hpp', 'interface/stdio_interface.hpp',
-                 'interface/stdio_interface.cpp', 'main.cpp']:
+                 'interface/stdio_interface.cpp', 'interface/stdio_channel.hpp',
+                 'interface/stdio_channel.cpp', 'main.cpp']:
         shutil.copy2(ROOT / name, public / name)
     run(['c++', '-std=c++14', '-pedantic-errors', '-fsyntax-only', '-I' + str(public),
-         '-I' + str(public / 'include'), public / 'interface/stdio_interface.cpp', public / 'main.cpp'])
+         '-I' + str(public / 'include'), public / 'interface/stdio_interface.cpp', public / 'interface/stdio_channel.cpp',
+         public / 'main.cpp'])
     checks.append('PASS: interface and main compile with SDK + public entry only, no component/private headers')
 
     headers = sorted((relocated / 'include').rglob('*.hpp'))
