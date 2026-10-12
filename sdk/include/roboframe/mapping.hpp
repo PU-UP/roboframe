@@ -9,7 +9,7 @@ struct MappingOptions {
     std::int64_t max_pose_gap_us = 250000; // Positive interpolation bracket limit; no extrapolation.
     std::int64_t max_correction_age_us = 20000000; // map-frame mode; no future correction interpolation.
 };
-enum class MappingPhase { idle, mapping, ready };
+enum class MappingPhase { idle, mapping, ready, finishing };
 struct MappingStatus {
     MappingPhase phase = MappingPhase::idle;
     std::uint64_t session = 0, received = 0, integrated = 0, ignored = 0;

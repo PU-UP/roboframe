@@ -23,7 +23,7 @@ flowchart LR
 | integration/robot_integration.hpp | 产品公开接口，仅依赖 SDK |
 | integration/robot_integration_impl.hpp | 私有组件所有权、接线和建图会话状态 |
 | integration/robot_integration.cpp | 构造、兼容性检查、启停 |
-| integration/data_flow.cpp | 转发数据、等待同步、调用地图更新 |
+| integration/data_flow.cpp | 转发数据、等待同步、提交有界地图计算、收取结果 |
 | integration/pose_buffer.hpp | integration 私有缓存工具，没有组件生命周期 |
 | integration/mapping_flow.cpp | StartMapping、FinishMapping、CancelMapping、地图操作 |
 | components/odom/include/odom/passthrough_odom_component.hpp | 透传位姿操作契约与组件；数据类型在 SDK |
@@ -40,13 +40,13 @@ Continuous odom 不使用 Action 状态。建图的 idle/mapping/ready 属于产
 而复用 SDK 和能力组件。其他业务不必重启 integration。
 
 ## 各阶段
-1. main 先创建未配置的 integration 并注入 stdio；进程输出 READY roboframe-v2。
+1. main 先创建未配置的 integration 并注入 stdio；进程输出 READY roboframe-v3。
    CONFIG 调用 Configure，成功才提交组件装配；参数或资源初始化失败允许重试，成功后不允许重复配置。
 2. BEGIN id 调用 StartMapping，清空本次占据图和待匹配 scan，保留持续 odom 数据流。
 3. ODOM 经透传组件输出到 PoseBuffer；SCAN 在 integration 排队（最多 64）。
    精确时间戳优先；否则只在合法时间间隔内插值，绝不挑最新 pose 或外推。
 4. 配对成功调用 OccupancyMapComponent::PushScan。scan 只读，组件不修改输入。
-5. FINISH 处理剩余队列，未配对的计为丢弃；非空地图形成基准快照，状态 ready，实时更新继续。
+5. FINISH 处理剩余对时队列，未配对的计为丢弃；返回 ACCEPTED 并进入 finishing。已接受计算完成后发 finished，非空地图形成基准快照，状态 ready；此后实时更新继续。finishing 期间忽略新 scan。
 6. SAVE name 保存基准快照；后续 scan 更新实时地图，不改变已交付的旧快照。
    integration 按数据时间最多 10 Hz 发布地图；planner 同时读取这份地图和同一个 scan。
 7. LOAD name 可在未建图时加载地图并交给 planner；加载后的地图只读，不自动恢复 evidence 更新状态。
@@ -188,3 +188,5 @@ SDK 发布版本由 sdk/VERSION 管理；产品选择集中在 cmake/Dependencie
 启动时输出到 stderr，不改变 IPC。integration 不再指定组件契约版本。
 组件依赖只存在于 integration 私有实现中；独立编译验证会实际移除组件与私有头文件，
 检查 interface 和 main 只靠 SDK 与公开入口能否通过编译。
+
+地图计算在私有 MapUpdateWorker 执行，完成由串行 Poll 汇集；详见 [执行模型](execution.md)。

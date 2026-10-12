@@ -75,8 +75,9 @@ void StdioChannel::Flush() {
         }
     }
 }
-bool StdioChannel::NextLine(std::string& line) {
+bool StdioChannel::NextLine(std::string& line, const std::function<void()>& service) {
     for (;;) {
+        service();
         Flush();
         const auto end = input_buffer_.find('\n');
         const auto count = end == std::string::npos ? input_buffer_.size() : end;
@@ -95,7 +96,7 @@ bool StdioChannel::NextLine(std::string& line) {
             return false;
         }
         pollfd fds[] = {{input_, POLLIN, 0}, {output_, short(pending_.empty() ? 0 : POLLOUT), 0}};
-        const auto ready = ::poll(fds, 2, 50);
+        const auto ready = ::poll(fds, 2, 5);
         if (ready < 0) { if (errno == EINTR) continue; throw std::runtime_error("IPC poll failed"); }
         if (fds[1].revents & (POLLERR | POLLHUP | POLLNVAL))
             throw std::runtime_error("IPC output disconnected");

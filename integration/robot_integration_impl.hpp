@@ -1,6 +1,7 @@
 #pragma once
 #include "integration/robot_integration.hpp"
 #include "integration/pose_buffer.hpp"
+#include "integration/map_update_worker.hpp"
 #include <map_server/file_map_component.hpp>
 #include <map_updater/occupancy_map_component.hpp>
 #include <odom/passthrough_odom_component.hpp>
@@ -11,7 +12,7 @@
 namespace roboframe {
 // Private assembly shared only by the integration implementation files.
 struct RobotIntegration::Impl {
-    Impl(MappingOptions options, std::string directory, ProductOutputs& outputs);
+    Impl(MappingOptions options, std::string directory, ProductOutputs& outputs, std::chrono::milliseconds delay);
     ~Impl();
     void StartMapping(std::uint64_t id);
     void FinishMapping();
@@ -28,6 +29,8 @@ struct RobotIntegration::Impl {
     void RequireActive() const;
     void Publish(const Scan2DPtr& scan, bool force = false);
     void WaitPlanner();
+    void Poll();
+    void CompleteFinish();
     DataFlowStatus Resources() const;
     void EmitMapping(MappingEventKind kind, const std::string& name = {});
     ProductOutputs& outputs_;
@@ -35,7 +38,10 @@ struct RobotIntegration::Impl {
     PoseBuffer pose_buffer_;
     odom::PassthroughOdomComponent odometry_;
     lidar_map::RecordedLidarMapComponent lidar_map_;
-    map_updater::OccupancyMapComponent grid_;
+    MapUpdateWorker mapper_;
+    std::size_t in_flight_ = 0;
+    std::uint64_t copied_bytes_ = 0;
+    GridSnapshot computed_;
     map_server::FileMapComponent store_;
     planner::ReadOnlyPlannerComponent planner_{std::chrono::milliseconds(5)};
     const GridFrame frame_;

@@ -1,4 +1,4 @@
-# 双向产品边界与 stdio v2
+# 双向产品边界与 stdio v3
 
 仅实现当前建图流程。integration 的业务入口与组件装配保持原结构，没有工作模式、导航、BT 或通用消息总线。
 
@@ -32,8 +32,8 @@ stdio 的回调只编码小消息并排队；地图通知只包含元数据。�
 
 ## 线协议
 
-启动输出 `READY roboframe-v2`。stdin/stdout 为独立方向，stderr 只用于日志。
-输入每行最多 65536 字节。v2 替代原来的裸命令；SDK 发布版本与线协议版本独立。
+启动输出 `READY roboframe-v3`。stdin/stdout 为独立方向，stderr 只用于日志。
+输入每行最多 65536 字节。v3 将 FINISH 改为异步接受/完成，旧客户端必须更新；v2 曾替代裸命令；SDK 发布版本与线协议版本独立。
 
 ~~~text
 REQ 1 SUBSCRIBE ON
@@ -49,8 +49,9 @@ EVENT 3 ODOM 0 0 0 0
 DATA SCAN 0 1 2 0
 REQ 4 FINISH
 ...
-EVENT <seq> MAPPING finished 4 1 1 1 0 -
-RES 4 OK FINISH
+RES 4 ACCEPTED FINISH
+...
+EVENT <seq> MAPPING finished 0 1 1 1 0 -
 REQ 5 GET_MAP baseline
 RES 5 MAP baseline <generation> <revision> <stamp_us> <frame> <width> <height> <resolution> <origin_x> <origin_y> <hex_cells>
 REQ 6 QUIT
@@ -61,12 +62,14 @@ RES 6 BYE
 示例事件序号仅用于说明；可合并的数据可能造成序号跳跃，接收顺序始终递增。
 REQ ID 必须非零并在连接内递增。BEGIN 的 session ID 是建图任务标识，不是某次调用的请求 ID。
 RES 对应一次调用，OK 表示当前同步操作成功返回；不是对未来异步任务完成的承诺。
-MAPPING 事件描述已经发生的状态变化，finished/canceled 才表示建图会话终态；SAVE 独立报告保存结果。
+MAPPING 事件描述已经发生的状态变化，finished/failed/canceled 才表示建图会话终态；SAVE 独立报告保存结果。
 响应和事件可以穿插，甚至事件先于对应响应到达，不允许客户端按“下一行就是我的回复”读取。
 
 DATA 只接受 ODOM、SCAN、MAP_POSE，不逐帧确认。非法 DATA 或无法识别请求 ID 的输入返回 `RES 0 ERROR ...`，
 有效 REQ 的参数错误返回对应 ID 的 ERROR；非法参数不执行操作。请求 ID 验证通过即消费，失败重试需新 ID。
-可以使用 REQ ODOM/SCAN/MAP_POSE 获取逐次回执，但批量数据推荐 DATA。
+可以使用 REQ ODOM/SCAN/MAP_POSE 获取逐次调用回执，但批量数据推荐 DATA。
+OK SCAN 仅表示输入已校验并完成路由尝试，不承诺已计算或一定入队；过载见 STATUS/RESOURCES。
+FINISH 返回 ACCEPTED，进入 finishing，直到 finished/failed；完成前 SAVE 拒绝，CANCEL 仍可执行。
 其他命令及参数沿用 [建图协议](mapping.md) 和 [TF 契约](transforms.md)。
 
 ### 输出类别
@@ -77,10 +80,10 @@ DATA 只接受 ODOM、SCAN、MAP_POSE，不逐帧确认。非法 DATA 或无法�
 | CORRECTION stamp x y yaw | lidar-map 的 T_map_odom 输出。保留最新待发值 |
 | TF valid scan_stamp correction_stamp x y yaw / TF unavailable | 最近处理 scan 的 T_map_base 或该链不可用；不是墙钟定位健康状态。保留最新待发值 |
 | MAP generation revision stamp frame width height resolution origin_x origin_y | 当前 live 快照已更新；保留最新通知 |
-| MAPPING kind request_id session generation integrated dropped name | started/progress/finished/canceled/saved/loaded/stopped；只有 progress 可合并 |
+| MAPPING kind request_id session generation integrated dropped name | started/progress/finishing/finished/failed/canceled/saved/loaded/stopped；只有 progress 可合并 |
 
 MAPPING 的 request_id 为触发该同步事件的请求，DATA、EOF 引发的事件为 0；session 记录当前/最近建图会话，
-loaded/stopped 不创建新任务。今后的异步任务依赖任务 ID 关联，不能沿用瞬时 request_id。
+loaded/stopped 不创建新任务。异步 finished/failed 的 request_id 为 0，客户端以 session 关联完成，不沿用瞬时 request_id。
 进度合并仅表示最新计数；可靠业务事件保留产生当时的值。
 地图 generation 只在同一进程内标识地图上下文，每次 BEGIN 或成功 LOAD 增加，revision 标识其中快照版本。
 新 generation 不能与旧地图/TF 混用。连接重建后重新获取状态；它不是持久化地图资产 ID。
@@ -98,7 +101,7 @@ hex_cells 是行优先、y 向上的原始字节十六进制编码，0/254/205 �
 ## 背压、断连与关闭
 
 - 同一个串行 poll 循环负责收发；文件描述符设为 O_NONBLOCK，析构恢复原标志。
-  不增加算法线程、发送线程或锁。每轮最多写 64 KiB，随后处理输入。
+  IPC 不增设发送线程；每轮最多写 64 KiB，随后处理输入并收取计算结果。空闲 poll 间隔最多 5 ms。
 - 队列最多 20 MiB 编码文本，可靠消息最多 256 项（包括正在发送的消息）；连续输出只有五种替换键。
   该上限不包括构造响应时的临时字符串、内核管道或地图本身，不是 RSS 上限。
 - 只替换尚未写出的同类数据；已写出部分的消息保持完整。输入顺序、scan 对时、地图生成不受替换影响。
@@ -108,8 +111,8 @@ hex_cells 是行优先、y 向上的原始字节十六进制编码，0/254/205 �
   输出管道读端关闭会被 poll/write 检出，不需要等下一条输入。
 - QUIT 或 stdin EOF 先关闭组件，允许剩余消息最多排空 2 秒。正常 QUIT 有 BYE；EOF 有 stopped 事件但无 BYE。
   不隐式 FINISH/SAVE。截断的末行不执行，报告 ERROR 后关闭。失败路径解除回调并清理组件。
-- 这些时间检查在现有串行 integration 调用之间执行；组件计算或文件写入仍可能阻塞调用线程，
-  不保证抢占长算法任务，也不代表控制周期或硬实时支持。未来 controller 调度仍需单独设计。
+- 这些时间检查在现有串行 integration 调用之间执行；文件写入仍可能阻塞调用线程，
+  文件操作和大地图编码尚非异步；地图计算已独立执行且可协作取消，见 [执行边界](execution.md)。这不代表硬实时支持。
 - IPC_STATUS 提供编码队列的 bytes/peak_bytes/pending/replaced，用于本机验收；不属于 SDK 算法状态。
 
 ## 验证
@@ -125,9 +128,5 @@ Python 有一个持续接收线程和有界响应队列，事件写入 JSONL，�
 回放使用 DATA 输入、带 ID 的业务请求，验证主动事件出现，并通过 GET_MAP 对比基准/实时地图与保存文件的全部字段和栅格。
 stdio_publication_test 使用真实 4 KiB 管道，覆盖无查询发布、退订、快照/地图上下文、暂时慢读、持续不读、
 可靠队列溢出、读端断连、EOF、QUIT 排空期限和非法/截断输入；mapping_check 验证进程内回调收到共享快照。
-SDK 4.1 仅新增输出契约；现有组件数据布局未改。产品选择 SDK 4.1，组件仍由构建记录 SDK 身份。
-
-本轮验收：13 项 CTest（其中管道专项含 9 个场景）及 ASan/UBSan 通过；五个组件独立安装、混合构建和
-24 个公开头文件隔离编译通过。全量 13,631 帧输入、910 次校正，收到 41,308 条主动事件；
-基准与实时地图通过 IPC 逐字段/逐栅格校验，落盘文件与上一轮 TF 回放逐字节一致。
-事件数量会随消费者速度及合并情况变化，不代表必须交付每一帧遥测。
+SDK 5.0 增加 finishing/failed 与计算通道诊断；公开状态布局及完成语义改变，组件包应重建。
+最新执行模型、容量、过载及验收见 [执行边界](execution.md)。

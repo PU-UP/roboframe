@@ -33,6 +33,7 @@ const char* MappingPhaseName(MappingPhase phase) {
         case MappingPhase::idle: return "idle";
         case MappingPhase::mapping: return "mapping";
         case MappingPhase::ready: return "ready";
+        case MappingPhase::finishing: return "finishing";
     }
     return "unknown";
 }
@@ -83,6 +84,8 @@ ProductOutputs StdioInterface::Outputs() {
             case MappingEventKind::saved: name = "saved"; break;
             case MappingEventKind::loaded: name = "loaded"; break;
             case MappingEventKind::stopped: name = "stopped"; break;
+            case MappingEventKind::finishing: name = "finishing"; break;
+            case MappingEventKind::failed: name = "failed"; break;
         }
         Event("MAPPING " + std::string(name) + " " + std::to_string(request_id_) + " " +
             std::to_string(value.status.session) + " " + std::to_string(value.generation) + " " +
@@ -153,6 +156,10 @@ bool StdioInterface::Dispatch(const std::string& line) {
         const auto s = integration_.data_flow_status();
         std::ostringstream out;
         out << "RESOURCES";
+        out << " compute_pending=" << s.compute_pending << " compute_active=" << s.compute_active
+            << " compute_results=" << s.compute_results << " compute_retained=" << s.compute_retained
+            << " compute_peak_retained=" << s.compute_peak_retained << " compute_rejected=" << s.compute_rejected
+            << " stale_results=" << s.stale_results;
         out << " lidar_scans=" << s.lidar_scans << " correction_outputs=" << s.correction_outputs
             << " missed_references=" << s.missed_references << " tf_dropped=" << s.tf_dropped;
         out << " shared_scans=" << s.shared_scans;
@@ -229,7 +236,7 @@ bool StdioInterface::Dispatch(const std::string& line) {
             else integration_.SnapshotMap(name);
         } else {
             End(input);
-            if (command == "FINISH") integration_.FinishMapping();
+            if (command == "FINISH") { integration_.FinishMapping(); Send("ACCEPTED FINISH"); return true; }
             else if (command == "CANCEL") integration_.CancelMapping();
             else if (command == "STATUS") { Send(Status()); return true; }
             else if (command == "WAIT_PLANNER") integration_.WaitPlanner();
@@ -240,10 +247,10 @@ bool StdioInterface::Dispatch(const std::string& line) {
     return true;
 }
 void StdioInterface::Run() {
-    channel_.Queue("READY roboframe-v2");
+    channel_.Queue("READY roboframe-v3");
     try {
         std::string line;
-        while (channel_.NextLine(line)) {
+        while (channel_.NextLine(line, [this] { request_id_ = 0; integration_.Poll(); })) {
             request_id_ = 0;
             try {
                 if (line.size() > 65536) throw std::invalid_argument("line exceeds 65536 bytes");

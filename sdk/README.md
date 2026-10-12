@@ -1,4 +1,4 @@
-# Roboframe SDK 4.1
+# Roboframe SDK 5.0
 interface、integration、component 共用的公开契约和小型基础设施。
 SDK 位于主目录的 sdk/，与 interfaces/、products/、components/ 并列；
 后两种复数目录是未来多产品布局，当前不为占位而搬动目录或创建空产品。
@@ -59,7 +59,7 @@ Scan2D 发布后生产者不得通过其他可写别名修改数据；消费者�
 现有 GridSpec 校验仍混有资源上限，已记入待办，不在本次扩大重构。
 
 SDK 不强制 Integration 基类或通用 AddData。无真实配置的组件不设空 Config。
-integration 与地图写入串行，planner 使用受限异步读取；各组件头文件声明并发、回调和异常语义。
+integration 单线程串行；地图算法由 integration 私有工作通道独占执行，planner 使用受限异步读取；各组件头文件声明并发、回调和异常语义。
 日志 sink 不重入日志 API；其异常被日志层吞掉。日志及 planner 的跨线程入口有同步；SDK 类型不自动保证所有可变对象的线程安全。
 组件 tests 下的 main 可脱离框架运行，不维护两套相同示例。
 
@@ -75,6 +75,8 @@ component 开发者不维护 SDK 版本、组件发布数字或独立 contract_v
 SDK 2.0 已移除独立契约版本；SDK 3.0 将 Grid::cells 改为分块写时复制，
 Scan2D 改为只能移动而不能复制。SDK 4.0 增加明确的 TF 数据结构、GridSpec.frame 和 mapper 完整变换入参。
 这些 major 版本的公开接口变化要求旧组件开发包重建。SDK 4.1 仅新增 outputs.hpp，未修改现有组件数据布局。
+SDK 5.0 增加 finishing/failed 和计算通道资源字段，改变公开状态布局及 FINISH 完成语义；旧包重建。
+组件的编译 SDK 仍自动记录，无需组件开发者维护额外版本字段。
 Scan2DPtr 和 GridSnapshot 跨模块只读共享；具体所有权与更新约束见
 [数据共享说明](../docs/data-sharing.md)。
 产品配置阶段会拒绝缺少构建元数据的旧包。

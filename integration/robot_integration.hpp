@@ -5,13 +5,15 @@
 #include <roboframe/transforms2d.hpp>
 #include <roboframe/outputs.hpp>
 #include <memory>
+#include <chrono>
 #include <string>
 
 namespace roboframe {
-// Product entry point; component assembly is private to the implementation.
+// Product entry point; all calls (including getters/Poll) belong to one owner thread.
+// Component assembly is private; output callbacks execute on this same owner.
 class RobotIntegration {
 public:
-    explicit RobotIntegration(std::string directory);
+    explicit RobotIntegration(std::string directory, std::chrono::milliseconds mapper_test_delay = std::chrono::milliseconds(0));
     ~RobotIntegration();
     RobotIntegration(const RobotIntegration&) = delete;
     RobotIntegration& operator=(const RobotIntegration&) = delete;
@@ -20,7 +22,8 @@ public:
     void SetOutputs(ProductOutputs outputs); // Serialized with all other public calls.
     MapView map_view(bool baseline) const;
     void StartMapping(std::uint64_t id);
-    void FinishMapping();
+    void FinishMapping(); // Accept finish; finished/failed event is emitted by Poll.
+    void Poll(); // Owner thread only; drains a bounded batch of worker completions.
     void CancelMapping();
     void SaveMap(const std::string& name);
     void SnapshotMap(const std::string& name); // Inspection checkpoint; does not finish mapping.
@@ -35,11 +38,12 @@ public:
     GridSnapshot map() const; // Saved baseline captured by FINISH or LOAD.
     GridSnapshot live_map() const;
     DataFlowStatus data_flow_status() const;
-    void WaitPlanner();
+    void WaitPlanner(); // Nonblocking idle check; throws while computation/reading is pending.
 private:
     struct Impl;
     Impl& Configured() const;
     std::string map_directory_;
+    const std::chrono::milliseconds mapper_test_delay_;
     ProductOutputs outputs_; // Outlives Impl; callbacks never run from its destructor.
     std::unique_ptr<Impl> impl_;
 };

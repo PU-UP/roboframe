@@ -54,6 +54,8 @@ const stats=[
 ['时间匹配等丢弃',s.before.dropped+' 帧'],
 ['结束后继续更新',s.resources.live_updates+' scan'],
 ['Planner 读完 / 替换待处理',s.resources.planner_completed+' / '+s.resources.planner_replaced],
+['计算通道最大持有',(s.resources.compute_peak_retained||0)+' / 8 项'],
+['计算过载拒收 / 迟到结果',(s.resources.compute_rejected||0)+' / '+(s.resources.stale_results||0)],
 ['Planner 最大持有 / 不一致',s.resources.planner_peak_retained+' 份 / '+s.resources.planner_inconsistent+' 次'],
 ['单张地图栅格数据',(s.resources.map_bytes/1048576).toFixed(2)+' MiB'],
 ['整段回放累计复制地图块',(s.resources.copied_bytes/1048576).toFixed(2)+' MiB'],

@@ -33,7 +33,7 @@ roboframe_load_components()
 
 add_library(roboframe_integration
     integration/robot_integration.cpp integration/data_flow.cpp
-    integration/mapping_flow.cpp integration/pose_buffer.cpp)
+    integration/mapping_flow.cpp integration/pose_buffer.cpp integration/map_update_worker.cpp)
 target_include_directories(roboframe_integration PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(roboframe_integration PUBLIC Roboframe::sdk
     PRIVATE Odom::component LidarMap::component MapUpdater::component MapServer::component Planner::component)
@@ -52,6 +52,12 @@ if(BUILD_TESTING)
     add_executable(mapping_check tests/mapping_check.cpp)
     target_link_libraries(mapping_check PRIVATE roboframe_integration)
     add_test(NAME mapping_check COMMAND mapping_check)
+    add_executable(mapping_execution_test tests/mapping_execution_test.cpp)
+    target_link_libraries(mapping_execution_test PRIVATE roboframe_integration)
+    add_test(NAME mapping_execution_test COMMAND mapping_execution_test)
+    add_test(NAME mapping_execution_ipc COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/mapping_execution_test.py $<TARGET_FILE:robot_runtime>)
+    set_tests_properties(mapping_execution_test mapping_execution_ipc PROPERTIES TIMEOUT 15)
     add_executable(pose_buffer_test tests/pose_buffer_test.cpp)
     target_link_libraries(pose_buffer_test PRIVATE roboframe_integration)
     add_test(NAME pose_buffer_test COMMAND pose_buffer_test)

@@ -10,6 +10,7 @@ import math
 from pathlib import Path
 import queue
 import threading
+import time
 from collections import Counter
 import struct
 import subprocess
@@ -177,12 +178,14 @@ class Host:
         self.responses = queue.Queue(maxsize=8)
         self.event_counts = Counter()
         self.request_id = 0
+        self.mapping_changed = threading.Condition()
+        self.terminal = None
         self.process = subprocess.Popen([str(binary), str(directory)], stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, stderr=self.log, text=True, bufsize=1)
         self.reader = threading.Thread(target=self._read, name='roboframe-output')
         self.reader.start()
         try:
-            if self.receive() != 'READY roboframe-v2':
+            if self.receive() != 'READY roboframe-v3':
                 raise RuntimeError('mapping host not ready')
             self.send('SUBSCRIBE ON')
         except Exception:
@@ -204,6 +207,10 @@ class Host:
                     self.event_counts[fields[2]] += 1
                     if fields[2] == 'MAPPING':
                         self.event_counts['mapping_' + fields[3]] += 1
+                        if fields[3] in ('finished', 'failed', 'canceled', 'stopped'):
+                            with self.mapping_changed:
+                                self.terminal = (int(fields[5]), fields[3])
+                                self.mapping_changed.notify_all()
                 else:
                     self.responses.put_nowait(line)
         except Exception as error:
@@ -246,6 +253,24 @@ class Host:
         self.requests.write(wire)
         self.process.stdin.write(wire)
         self.process.stdin.flush()
+
+    def wait_finished(self, session):
+        with self.mapping_changed:
+            if not self.mapping_changed.wait_for(lambda: self.terminal and self.terminal[0] == session, timeout=30):
+                raise TimeoutError('mapping completion timeout')
+            if self.terminal[1] != 'finished':
+                raise RuntimeError('mapping ended: ' + self.terminal[1])
+
+    def wait_idle(self):
+        # Offline replay uses bounded batches to avoid intentional live-stream overload drops.
+        deadline = time.monotonic() + 30
+        while True:
+            state = self.resources()
+            if not state['compute_retained'] and not state['planner_pending'] and not state['planner_active']:
+                return
+            if time.monotonic() >= deadline:
+                raise TimeoutError('compute drain timeout')
+            time.sleep(0.001)
 
     def map(self, role):
         fields = self.send('GET_MAP ' + role).split()
@@ -353,6 +378,7 @@ def run(args):
 
     def finish_mapping():
         host.send('FINISH')
+        host.wait_finished(1)
         status = host.status()
         host.send('SAVE final')
         grid = frame('final', scan_number)
@@ -376,6 +402,8 @@ def run(args):
             host.push('SCAN ' + str(t) + ' ' + str(len(record['hits'])) + ' ' +
                       ' '.join(format(v, '.12g') for point in record['hits'] for v in point))
             scan_number += 1
+            if scan_number % 4 == 0:
+                host.wait_idle()
             displayed = record.get('display_pose', record['pose'])
             trajectory.append([t, displayed[0] if displayed else None, displayed[1] if displayed else None])
             if use_tf and ('map_reference' in record or scan_number % 100 == 0):
@@ -400,11 +428,13 @@ def run(args):
                         map_from_base=actual, paired_reference='map_reference' in record,
                         error_m=error, yaw_error_rad=yaw_error))
             if not finished and scan_number < finish and scan_number % checkpoints == 0:
+                host.wait_idle()
                 if host.status()['integrated']:
                     name = f'progress-{scan_number:05d}'
                     host.send('SNAPSHOT ' + name)
                     frame(name, scan_number)
             if finished and scan_number < count and scan_number % checkpoints == 0:
+                host.wait_idle()
                 name = f'live-{scan_number:05d}'
                 host.send('SNAPSHOT ' + name)
                 frame(name, scan_number)
@@ -412,11 +442,19 @@ def run(args):
                 print(f'IPC scan {scan_number}/{count}', flush=True)
         if not finished:
             before, final_grid = finish_mapping()
+        host.wait_idle()
         after = host.status()
         host.send('SAVE frozen')
         host.send('SNAPSHOT live')
         live_grid = frame('live', scan_number)
-        host.send('WAIT_PLANNER')
+        while True:
+            try:
+                host.send('WAIT_PLANNER')
+                break
+            except RuntimeError as error:
+                if 'pending' not in str(error):
+                    raise
+                host.wait_idle()
         resources = host.resources()
         resource_samples.append(dict(after_scan=scan_number, **resources))
         original = (args.output / 'final.rfgrid').read_bytes()

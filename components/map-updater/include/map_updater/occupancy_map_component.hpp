@@ -5,13 +5,17 @@
 #include <roboframe/grid.hpp>
 #include <map_updater/version.hpp>
 #include <memory>
+#include <functional>
+#include <stdexcept>
 #include <vector>
 
 namespace map_updater {
 roboframe::ComponentInfo GetComponentInfo();
 // These implementation limits are deliberately separate from the shared scan contract.
 void ValidateScan(const roboframe::Scan2D& scan);
+struct UpdateCanceled : std::runtime_error { UpdateCanceled() : std::runtime_error("map update canceled") {} };
 struct Update { std::size_t used_rays = 0, outside_rays = 0; };
+// Synchronous, single-owner algorithm; no internal thread or concurrent method calls.
 class OccupancyMapComponent final : public roboframe::Component {
 public:
     explicit OccupancyMapComponent(roboframe::GridSpec spec);
@@ -20,7 +24,8 @@ public:
     roboframe::Lifecycle lifecycle() const override { return lifecycle_; }
     void Reset();
     // Once per scan per cell; occupied endpoints override free rays within that scan.
-    Update PushScan(const roboframe::Scan2DPtr& scan, const roboframe::ScanTransforms2D& transforms);
+    Update PushScan(const roboframe::Scan2DPtr& scan, const roboframe::ScanTransforms2D& transforms,
+                    const std::function<bool()>& canceled = {}); // After cancellation, Reset before reuse.
     roboframe::GridSnapshot Snapshot() const;
     std::uint64_t revision() const { return revision_; }
     std::uint64_t copied_bytes() const { return copied_bytes_; }

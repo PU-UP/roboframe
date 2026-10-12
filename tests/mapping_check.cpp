@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
+#include <thread>
 #include <unistd.h>
 #include <sys/stat.h>
 void Check(bool ok) { if (!ok) throw std::runtime_error("integration check failed"); }
@@ -10,6 +11,15 @@ template<class F> void Reject(F f) {
 }
 roboframe::Scan2DPtr Scan(std::int64_t t) {
     return std::make_shared<const roboframe::Scan2D>(roboframe::Scan2D{t, {{2, 0}}});
+}
+void Drain(roboframe::RobotIntegration& integration) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    do {
+        integration.Poll();
+        if (!integration.data_flow_status().compute_retained) { integration.Poll(); return; }
+        Check(std::chrono::steady_clock::now() < until);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    } while (true);
 }
 int main() {
     char directory[] = "/tmp/roboframe-mapping-XXXXXX";
@@ -48,8 +58,10 @@ int main() {
     integration.PushScan(Scan(50));
     Check(integration.pending() == 1 && integration.mapping_status().integrated == 0);
     integration.PushOdometry({100, {2, 0, 0}});
+    Drain(integration);
     Check(integration.pending() == 0 && integration.mapping_status().integrated == 1);
     integration.FinishMapping();
+    Drain(integration);
     const auto frozen = integration.map();
     Check(received_map == integration.live_map() && emitted_maps > 0 && emitted_events > 0);
     Check(frozen->cells[5 * 20 + 8] == 0); // pose at t50 x=1, hit x=3; not latest x=2.
@@ -57,13 +69,18 @@ int main() {
     Reject([&] { integration.SaveMap("first"); });
     integration.PushOdometry({200, {3, 0, 0}});
     integration.PushScan(Scan(150));
+    Drain(integration);
     Check(integration.map() == frozen && integration.mapping_status().ignored == 0);
-    integration.WaitPlanner();
+    for (;;) {
+        try { integration.WaitPlanner(); break; }
+        catch (const std::logic_error&) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
+    }
     Check(integration.live_map()->revision > frozen->revision);
     Check(integration.data_flow_status().live_updates == 1);
     Check(!integration.data_flow_status().planner_inconsistent);
     integration.PushOdometry({300, {100, 0, 0}});
     integration.PushScan(Scan(300));
+    Drain(integration);
     Check(integration.data_flow_status().live_dropped == 1);
     Check(integration.mapping_status().dropped == 0);
     integration.SaveMap("second");
@@ -85,6 +102,7 @@ int main() {
     integration.PushScan(Scan(1100));
     integration.PushScan(Scan(1200));
     integration.FinishMapping();
+    Drain(integration);
     Check(integration.mapping_status().integrated == 1 && integration.mapping_status().dropped == 1);
     Check(frozen->revision == 1); // Old snapshot survives new sessions.
     integration.SetOutputs({});

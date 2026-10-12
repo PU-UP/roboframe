@@ -34,6 +34,13 @@ int main() {
         roboframe::Scan2D{3, {{3, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}, {5, 0}}});
     grid.PushScan(crossing, {{3, {1.5, 1.5, 0}}, {3, {}}});
     const auto forward = grid.Snapshot();
+    grid.Reset();
+    int cancellation_checks = 0;
+    Reject([&] { grid.PushScan(crossing, {{3, {1.5, 1.5, 0}}, {3, {}}},
+                              [&] { return ++cancellation_checks == 3; }); });
+    grid.Reset();
+    grid.PushScan(crossing, {{3, {1.5, 1.5, 0}}, {3, {}}});
+    Check(grid.Snapshot()->cells == forward->cells); // Canceled partial rays leave no evidence after reset.
     Check(forward->cells[14] == 0); // An observed endpoint wins over crossing rays in the same scan.
     grid.Reset();
     auto reversed = std::make_shared<roboframe::Scan2D>(crossing->stamp_us, crossing->hits);

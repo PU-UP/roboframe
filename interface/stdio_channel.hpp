@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <deque>
 #include <string>
+#include <functional>
 namespace roboframe {
 // POSIX pipe transport only. All methods run on the interface owner thread.
 class StdioChannel {
@@ -11,7 +12,7 @@ public:
     ~StdioChannel();
     StdioChannel(const StdioChannel&) = delete;
     StdioChannel& operator=(const StdioChannel&) = delete;
-    bool NextLine(std::string& line);
+    bool NextLine(std::string& line, const std::function<void()>& service);
     void Queue(std::string line, std::string replace_key = {});
     void DropTelemetry();
     void Drain();

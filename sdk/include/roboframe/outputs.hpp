@@ -6,7 +6,7 @@
 namespace roboframe {
 // Generation distinguishes maps within one runtime; it is not a persistent asset ID.
 struct MapView { std::uint64_t generation = 0; GridSnapshot grid; };
-enum class MappingEventKind { started, progress, finished, canceled, saved, loaded, stopped };
+enum class MappingEventKind { started, progress, finished, canceled, saved, loaded, stopped, finishing, failed };
 struct MappingEvent {
     MappingEventKind kind;
     MappingStatus status;

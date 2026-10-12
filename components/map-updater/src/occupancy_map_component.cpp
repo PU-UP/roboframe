@@ -24,6 +24,7 @@ OccupancyMapComponent::OccupancyMapComponent(roboframe::GridSpec spec) : spec_(s
 void OccupancyMapComponent::Reset() {
     if (lifecycle_ != roboframe::Lifecycle::active) throw std::logic_error("grid inactive");
     std::fill(evidence_.begin(), evidence_.end(), 0);
+    std::fill(observations_.begin(), observations_.end(), 0); touched_.clear();
     revision_ = 0;
     stamp_us_ = -1;
     copied_bytes_ = 0;
@@ -56,7 +57,8 @@ void OccupancyMapComponent::Ray(int x, int y, int end_x, int end_y) {
         if (twice <= dx) { error += dx; y += sy; }
     }
 }
-Update OccupancyMapComponent::PushScan(const roboframe::Scan2DPtr& scan, const roboframe::ScanTransforms2D& transforms) {
+Update OccupancyMapComponent::PushScan(const roboframe::Scan2DPtr& scan, const roboframe::ScanTransforms2D& transforms,
+        const std::function<bool()>& canceled) {
     if (lifecycle_ != roboframe::Lifecycle::active) throw std::logic_error("grid inactive");
     if (!scan) throw std::invalid_argument("null scan");
     ValidateScan(*scan);
@@ -73,6 +75,7 @@ Update OccupancyMapComponent::PushScan(const roboframe::Scan2DPtr& scan, const r
     Update update;
     const double c = std::cos(pose.pose.yaw), s = std::sin(pose.pose.yaw);
     for (const auto& point : scan->hits) {
+        if (canceled && canceled()) throw UpdateCanceled();
         int ex, ey;
         if (!Cell(pose.pose.x + c * point.x - s * point.y,
                   pose.pose.y + s * point.x + c * point.y, ex, ey)) {
@@ -82,7 +85,9 @@ Update OccupancyMapComponent::PushScan(const roboframe::Scan2DPtr& scan, const r
         Ray(x, y, ex, ey);
         ++update.used_rays;
     }
+    std::size_t processed = 0;
     for (auto index : touched_) {
+        if ((processed++ % 256 == 0) && canceled && canceled()) throw UpdateCanceled();
         auto& value = evidence_[index];
         value = static_cast<std::int16_t>(std::max(-30, std::min(30,
             int(value) + (observations_[index] == 2 ? 4 : -1))));

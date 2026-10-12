@@ -82,11 +82,11 @@ python3 tools/mapping/replay.py --dataset tf --scans 0 --finish-after 12267 \
 ~~~
 输出目录必须不存在，防止覆盖地图。两份示例日志已包含在 data/intel-lab/，无需 history 目录；来源和校验方式见 [数据说明](data/intel-lab/README.md)。
 查看输出 replay.html；[链路、协议与地图验证](docs/mapping.md)。
-FINISH 保存基准快照，之后 scan 继续更新实时地图。SAVE 保存基准，SNAPSHOT 保存当前地图；
+FINISH 异步接受结束请求，finished 事件后冻结基准快照，之后 scan 继续更新实时地图。SAVE 保存基准，SNAPSHOT 保存当前地图；
 planner 读取共享 scan 和地图。详见 [大数据共享与验收](docs/data-sharing.md)。
 
 ## 双向 IPC
-stdio v2 支持 REQ/RES 请求关联、DATA 传感器输入及主动 EVENT。默认不订阅，SUBSCRIBE ON 开启输出。
+stdio v3 支持 REQ/RES 请求关联、DATA 传感器输入及主动 EVENT。默认不订阅，SUBSCRIBE ON 开启输出。
 odom 独立发布；建图状态变化主动通知；地图先发版本通知，GET_MAP 按需取完整快照。
 Python 回放持续读取，响应与事件分流，并校验经 IPC 取回的地图。详见 [协议、职责与关闭边界](docs/ipc.md)。
 
@@ -119,7 +119,7 @@ BUILD_TESTING=OFF 不要求 Python，不编译测试 main。
 
 ## 版本维护
 SDK 维护者只维护 sdk/VERSION；产品维护者在 cmake/Dependencies.cmake 选择 SDK
-精确版本与组件清单。当前使用 SDK 4.1，新增具名产品输出契约；此前 SDK 4.0 的 Grid/TF 接口变化需要旧 major 组件包重建。
+精确版本与组件清单。当前使用 SDK 5.0，增加异步建图完成状态和计算资源统计；旧 major 组件包需要重建。
 component 不再有手写 VERSION 或 contract_version，也不自行填写 SDK 要求。
 源码标识和实际编译 SDK 自动生成，安装包携带原始记录；启动时只检查 SDK 兼容性。
 源码变化自动更新指纹，SDK 与产物记录不同则按兼容规则拒绝，不篡改旧包记录。
@@ -128,3 +128,5 @@ component 不再有手写 VERSION 或 contract_version，也不自行填写 SDK 
 integration 和地图写入仍串行；planner 有一个独立只读线程。静态链接，无 BT、线程池、动态插件或 ARM 工具链。
 
 多产品布局、BT、异步数据、ROS/DDS、ARM 和工具演进统一记录在 [TODO.md](TODO.md)。
+
+执行与线程边界、过载和取消语义见 [执行模型](docs/execution.md)。stdio v3 的 FINISH 返回 ACCEPTED；Python 回放已同步更新。

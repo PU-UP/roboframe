@@ -10,17 +10,17 @@ import tempfile
 import time
 import unittest
 
-BINARY = str(Path(sys.argv.pop(1)).resolve())
+BINARY = None
 
 class Session:
-    def __init__(self, directory):
-        self.p = subprocess.Popen([BINARY, directory], stdin=subprocess.PIPE,
+    def __init__(self, directory, delay=0):
+        self.p = subprocess.Popen([BINARY, directory, f'--map-delay-ms={delay}'], stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
         fcntl.fcntl(self.p.stdout, fcntl.F_SETPIPE_SZ, 4096)
         self.buffer = b''
         self.events = []
         self.ident = 0
-        assert self.line() == 'READY roboframe-v2'
+        assert self.line() == 'READY roboframe-v3'
 
     def write(self, text):
         data = text.encode()
@@ -55,19 +55,36 @@ class Session:
                     assert int(event[1]) > int(self.events[-1][1])
                 self.events.append(event)
                 continue
+            if line.startswith('RES 0 ERROR'):
+                return line.split(' ', 2)[2]
             prefix = f'RES {ident} '
             assert line.startswith(prefix), line[:200]
             return line[len(prefix):]
 
     def req(self, command):
-        return self.response(self.submit(command))
+        response = self.response(self.submit(command))
+        if response == 'ACCEPTED FINISH':
+            deadline = time.monotonic() + 5
+            while self.req('STATUS').split()[1] == 'finishing':
+                if time.monotonic() >= deadline: raise TimeoutError('finish timeout')
+                time.sleep(0.001)
+        return response
+
+    def wait_compute(self):
+        deadline = time.monotonic() + 5
+        while True:
+            fields = self.req('RESOURCES').split()[1:]
+            values = dict(x.split('=') for x in fields)
+            if not int(values['compute_retained']): return
+            if time.monotonic() >= deadline: raise TimeoutError('compute timeout')
+            time.sleep(0.001)
 
     def prepare(self, size=20):
         assert self.req('SUBSCRIBE ON') == 'OK SUBSCRIBE'
         assert self.req(f'CONFIG {size} {size} 1 -5 -5 100') == 'OK CONFIG'
         assert self.req('BEGIN 1') == 'OK BEGIN'
         self.write('DATA ODOM 0 0 0 0\nDATA SCAN 0 1 2 0\n')
-        assert self.req('FINISH') == 'OK FINISH'
+        assert self.req('FINISH') == 'ACCEPTED FINISH'
 
     def close(self):
         if self.p.poll() is None:
@@ -109,6 +126,7 @@ class Publication(unittest.TestCase):
         self.assertTrue(all(k in kinds for k in ['started', 'finished', 'saved']))
         s.write('DATA ODOM 100000 0 0 0\nDATA SCAN 100000 1 3 0\n')
         self.assertEqual(s.req('GET_MAP baseline').split(), map1)
+        s.wait_compute()
         self.assertNotEqual(s.req('GET_MAP live').split()[-1], map1[-1])
         s.req('LOAD first')
         map2 = s.req('GET_MAP live').split()
@@ -126,6 +144,7 @@ class Publication(unittest.TestCase):
         s.req('SUBSCRIBE ON'); s.req('CONFIG 20 20 1 -5 -5 100'); s.req('BEGIN 1')
         s.write('DATA ODOM 0 0 0 0\nDATA SCAN 0 1 2 0\n')
         s.req('STATUS')
+        s.wait_compute()
         # Stop reading; DATA, task completion and SAVE must still be processed.
         s.write(''.join(f'DATA ODOM {i} 0 0 0\n' for i in range(1, 2001)))
         finish_id = s.submit('FINISH')
@@ -136,14 +155,14 @@ class Publication(unittest.TestCase):
             time.sleep(0.01)
         self.assertTrue(marker.exists(), 'input stalled behind output')
         self.assertIsNone(s.p.poll())
-        self.assertEqual(s.response(finish_id), 'OK FINISH')
+        self.assertEqual(s.response(finish_id), 'ACCEPTED FINISH')
         self.assertEqual(s.response(ident), 'OK SAVE')
         stats = dict(field.split('=') for field in s.req('IPC_STATUS').split()[1:])
         self.assertGreater(int(stats['replaced']), 0)
         self.assertLess(int(stats['peak_bytes']), 10000)
         self.assertTrue(any(e[2:4] == ['ODOM', '2000'] for e in s.events))
         self.assertTrue(any(e[2:4] == ['MAPPING', 'saved'] for e in s.events))
-        self.assertTrue(any(e[2:4] == ['MAPPING', 'finished'] and int(e[4]) == finish_id for e in s.events))
+        self.assertTrue(any(e[2:4] == ['MAPPING', 'finished'] and int(e[4]) == 0 for e in s.events))
         s.req('QUIT')
         self.assertEqual(s.p.wait(timeout=3), 0)
 
@@ -204,4 +223,5 @@ class Publication(unittest.TestCase):
         self.assertEqual(s.p.wait(timeout=3), 0)
 
 if __name__ == '__main__':
+    BINARY = str(Path(sys.argv.pop(1)).resolve())
     unittest.main()

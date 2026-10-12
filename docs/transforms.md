@@ -53,15 +53,15 @@ RecordedLidarMapComponent 是独立 SOURCE/PACKAGE 组件，只依赖 SDK，可�
   回放使用 20 秒有效期以覆盖该日志最长约 13.782 秒的校正间隔；这是离线验证配置，不是实机默认安全时限。
 - 参考 pose 要先于对应 scan 输入；迟到引用明确拒绝。参考队列最多 64 个小位姿，scan/odom 等待队列仍有界。
   被丢弃 scan 对应的引用在后续扫描到达时清理，并记录 missed_references；不无限积压。
-- odom 同步等待由 integration 负责；lidar-map 与 mapper 不各存一份大 scan。两者顺序读取同一个 Scan2DPtr，
+- odom 同步等待由 integration 负责；lidar-map 与 mapper 不各存一份大 scan。lidar-map 在 owner 线程读取，mapper 在计算通道读取同一个不可变 Scan2DPtr，
   planner 在地图发布时获得同一对象；payload 不复制。TF 只按值复制几个标量，没必要给小结构套 shared_ptr。
 - 新建图会话、取消、加载、关闭会清理对应校正上下文。加载 map 不会产生 TF 或冒充定位成功。
-- component 的发布是同步 typed 回调；integration 的具名输出经 interface 变为主动事件，详见 [双向 IPC](ipc.md)。
+- odom/lidar-map 的发布是 owner 线程上的同步 typed 回调；mapper 完成通过有界队列交回 owner；integration 的具名输出经 interface 变为主动事件，详见 [双向 IPC](ipc.md)。
   TF 查询/事件表示最近处理 scan 的变换，不代表当前墙钟时刻的定位健康状态。odom 独立随输入发布。
 
 ## 协议与持久化
 
-以下是命令体，stdio v2 需加 REQ ID（传感器也可用 DATA），见 [线协议](ipc.md)。
+以下是命令体，stdio v3 需加 REQ ID（传感器也可用 DATA），见 [线协议](ipc.md)。
 CONFIG 无 MAP_TF 尾部时表示 odom-frame 本地堆叠：
 ~~~text
 CONFIG width height resolution origin_x origin_y max_odom_gap_us MAP_TF max_correction_age_us

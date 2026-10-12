@@ -5,7 +5,7 @@
 ## 所有权与接线
 ~~~text
 IPC 解码 scan → shared_ptr<const Scan2D>
-                         ├─→ map-updater（串行读取，更新私有 evidence）
+                         ├─→ map-updater（专用计算通道串行读取，更新私有 evidence）
                          └─→ planner（发布地图时收到同一个 scan）
 map-updater → GridSnapshot ──→ integration 当前地图
                            ├─→ planner（独立线程）
@@ -18,7 +18,7 @@ planner 单元测试检查 scan 对象、点数组和地图对象的地址，确
 
 integration 仍负责配对 scan 与 odom，以及决定何时发布；地图内部更新和块复制由 component/SDK 存储处理。
 按传感器时间间隔 100 ms 发布，即数据时间最多 10 Hz；FINISH、WAIT_PLANNER 可强制刷新尾帧。
-离线回放按最快速度运行，不代表实际硬件的 10 Hz 墙钟吞吐性能。并非每帧 scan 都送给 planner，
+离线回放每 4 帧等待计算通道排空，确保确定性；其吞吐，不代表实际硬件的 10 Hz 墙钟吞吐性能。并非每帧 scan 都送给 planner，
 每次送入 planner 的 scan 与对应地图的时间戳一致。
 
 ## 地图快照
@@ -47,17 +47,17 @@ WaitIdle 返回时工作线程已释放输入引用；Deactivate 唤醒并加入
 完成等待时 received = completed + replaced，pending/active 均为零。
 替换数量会随机器调度变化；不能把它解释为建图丢帧。
 
-scan/odom 配对队列仍限制 64 帧，每帧最多 2048 点；planner 的引用持有上限为两项。
+scan/odom 配对队列仍限制 64 帧，每帧最多 2048 点；额外计算通道包含待处理、执行中和已完成结果共 8 项，满时拒收最新计算输入；planner 的引用持有上限为两项。
 integration 还持有最新 scan、基准地图和当前地图，地图组件持有工作状态与缓存快照。
 本产品内持有数量有界，但任意外部消费者主动永久保存快照仍会增加内存，框架不能替它回收。
 分块写时复制不消除全图更新、初始分配、算法私有缓存或引用表的成本。
 
 ## 指令与观察
-- FINISH：结束本次基准建图，冻结基准；scan 继续更新实时地图。
+- FINISH：接受结束请求并排空已接受的计算；finished 后冻结基准并允许 scan 继续更新实时地图。finishing 期间新 scan 忽略。
 - SAVE name：保存基准地图，前后结果必须一致。
-- SNAPSHOT name：保存当前实时地图，FINISH 后仍允许。
+- SNAPSHOT name：保存最近完成的地图，FINISH 后仍允许。
 - RESOURCES：读取发布、实时更新/丢弃、复制字节以及 planner 计数。
-- WAIT_PLANNER：强制发布最新版本并等待读取完成，便于确定性验收。
+- WAIT_PLANNER：检查计算和读取是否空闲；有工作时立即返回 pending 错误，由回放端等待并重试，不阻塞接收。
 - LOAD：读取已有地图并送 planner，但不从占据值反推 evidence；加载后不继续更新，需 BEGIN 开始新建图。
 - CANCEL/QUIT：停止该建图更新或关闭进程，不隐式保存；组件析构负责线程清理。
 
@@ -75,10 +75,10 @@ python3 tests/build_isolation_test.py
 python3 tools/mapping/replay.py --scans 0 --finish-after 12267 --output build-product/shared-data-result
 ~~~
 输出目录须不存在。浏览 replay.html 可对比基准/实时地图并查看资源指标；
-summary.json 和指令回执保留实际执行记录。当前 SDK 为 4.1；4.0 之前的组件包需按新存储与 TF 契约重建。
+summary.json 和指令回执保留实际执行记录。当前 SDK 为 5.0，旧 major 的组件包需重建。
 双向 IPC 地图通知与按需读取见 [输出设计](ipc.md)，跨进程序列化复制不包含在上述地图块复制计数中。
 
-一次全量验收：13,631 帧，基准建图 12,267 帧，之后更新 1,364 帧；
+历史同步执行版本的一次全量验收（非当前复制量）：13,631 帧，基准建图 12,267 帧，之后更新 1,364 帧；
 实时地图相对基准变化 37,315 个格，基准文件与改造前逐字节一致。
 6,979 次发布，地图块复制约 382.70 MiB；
 按每次发布都复制完整像素估算约 7149.21 MiB，不含引用表/初始化/IPC 成本。
@@ -89,3 +89,6 @@ planner 最多持有两项，读取不一致为零；具体完成/替换次数�
 未取得 TSan 通过结论；ASan/UBSan 与异步共享行为测试通过。
 
 新增 lidar-map 与完整 TF 后的数据复用见 [坐标链路](transforms.md)，组件同样共享输入 scan。
+
+异步计算每次完成都会生成只读快照，可能比原来按发布周期取快照增加块复制；仍只复制修改块。
+当前容量、取消与新验收见 [执行边界](execution.md)，统计以本次 summary.json 为准。

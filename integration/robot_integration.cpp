@@ -10,11 +10,12 @@ void CheckComponent(const ComponentInfo& info) {
     ROBO_LOG_INFO("component") << info.name << " source=" << info.source_id << " built_with_sdk=" << ToString(info.built_with_sdk);
 }
 }
-RobotIntegration::RobotIntegration(std::string directory) : map_directory_(std::move(directory)) {}
+RobotIntegration::RobotIntegration(std::string directory, std::chrono::milliseconds delay)
+    : map_directory_(std::move(directory)), mapper_test_delay_(delay) {}
 RobotIntegration::~RobotIntegration() = default;
 void RobotIntegration::Configure(MappingOptions options) {
     if (impl_) throw std::logic_error("already configured");
-    impl_ = std::make_unique<Impl>(options, map_directory_, outputs_);
+    impl_ = std::make_unique<Impl>(options, map_directory_, outputs_, mapper_test_delay_);
 }
 void RobotIntegration::SetOutputs(ProductOutputs outputs) { outputs_ = std::move(outputs); }
 MapView RobotIntegration::map_view(bool baseline) const {
@@ -26,6 +27,7 @@ RobotIntegration::Impl& RobotIntegration::Configured() const {
     return *impl_;
 }
 void RobotIntegration::StartMapping(std::uint64_t id) { Configured().StartMapping(id); }
+void RobotIntegration::Poll() { if (impl_ && impl_->active_) impl_->Poll(); }
 void RobotIntegration::FinishMapping() { Configured().FinishMapping(); }
 void RobotIntegration::CancelMapping() { Configured().CancelMapping(); }
 void RobotIntegration::SaveMap(const std::string& name) { Configured().SaveMap(name); }
@@ -42,19 +44,19 @@ void RobotIntegration::Shutdown() {
     impl_->EmitMapping(MappingEventKind::stopped);
 }
 const MappingStatus& RobotIntegration::mapping_status() const { return Configured().status_; }
-std::size_t RobotIntegration::pending() const { return Configured().pending_.size(); }
+std::size_t RobotIntegration::pending() const { return Configured().pending_.size() + Configured().in_flight_; }
 GridSnapshot RobotIntegration::map() const { return Configured().frozen_; }
 GridSnapshot RobotIntegration::live_map() const { return Configured().live_; }
 DataFlowStatus RobotIntegration::data_flow_status() const { return Configured().Resources(); }
 void RobotIntegration::WaitPlanner() { Configured().WaitPlanner(); }
 
-RobotIntegration::Impl::Impl(MappingOptions options, std::string directory, ProductOutputs& outputs)
+RobotIntegration::Impl::Impl(MappingOptions options, std::string directory, ProductOutputs& outputs, std::chrono::milliseconds delay)
     : outputs_(outputs), pose_buffer_({512, options.max_pose_gap_us}), odometry_([this](const TimedPose2D& pose) {
           RouteOdometry(pose);
       }), lidar_map_([this](const MapCorrection2D& value) {
           correction_ = value; has_correction_ = true;
           if (outputs_.correction) outputs_.correction(value);
-      }), grid_(options.grid), store_(std::move(directory)), frame_(options.grid.frame),
+      }), mapper_(options.grid, delay), store_(std::move(directory)), frame_(options.grid.frame),
       max_correction_age_us_(options.max_correction_age_us) {
     if (max_correction_age_us_ <= 0 || max_correction_age_us_ > 60000000)
         throw std::invalid_argument("invalid correction maximum age");
@@ -68,7 +70,6 @@ RobotIntegration::Impl::Impl(MappingOptions options, std::string directory, Prod
     store_.Activate();
     odometry_.Activate();
     lidar_map_.Activate();
-    grid_.Activate();
     active_ = true;
     ROBO_LOG_INFO("integration") << "modules active: odom + lidar-map -> map-updater -> planner/map-server; SDK "
                              << ToString(sdk_version);
@@ -83,18 +84,18 @@ void RobotIntegration::Impl::RequireActive() const {
 void RobotIntegration::Impl::Shutdown() {
     if (!active_) return;
     // EOF/exit abandons pending work; it never silently finishes or saves a map.
-    if (status_.phase == MappingPhase::mapping) {
-        status_.dropped += pending_.size();
-        status_.drop_cancel += pending_.size();
+    if (status_.phase == MappingPhase::mapping || status_.phase == MappingPhase::finishing) {
+        status_.dropped += pending_.size() + in_flight_;
+        status_.drop_cancel += pending_.size() + in_flight_;
         status_.phase = MappingPhase::idle;
     } else if (updating_) {
-        resources_.live_dropped += pending_.size();
+        resources_.live_dropped += pending_.size() + in_flight_;
     }
+    mapper_.Stop(); in_flight_ = 0;
     planner_.Deactivate();
     pending_.clear();
     latest_scan_.reset();
     updating_ = false;
-    grid_.Deactivate();
     odometry_.Deactivate();
     lidar_map_.Deactivate();
     transforms_ = {}; has_correction_ = false;
