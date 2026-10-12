@@ -1,5 +1,5 @@
 # Product maintainer selects the SDK and component packages here.
-set(ROBOFRAME_REQUIRED_SDK_VERSION "5.1.0")
+set(ROBOFRAME_REQUIRED_SDK_VERSION "5.2.0")
 function(roboframe_load_components)
     roboframe_component(odom Odom)
     roboframe_component(lidar-map LidarMap)

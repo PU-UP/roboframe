@@ -1,6 +1,6 @@
 #pragma once
 #include "integration/robot_integration.hpp"
-#include "integration/sensor_flow.hpp"
+#include "integration/data_flow/sensor_flow.hpp"
 #include <roboframe/execution.hpp>
 #include <map_server/file_map_component.hpp>
 #include <map_updater/occupancy_map_component.hpp>
@@ -26,6 +26,11 @@ struct RobotIntegration::Impl {
     void WaitPlanner();
     void Poll();
     void CompleteFinish();
+    void OnMapResult(MapExecution::Result result);
+    void OnMapPublished();
+    void AdvanceWorkflows();
+    void CountInputs(const SensorFlow::Counts& input, MappingStatus& task, DataFlowStatus& resources) const;
+    void CaptureInputs(const SensorFlow::State& input);
     std::size_t PendingCompute() const;
     MappingStatus Status() const;
     DataFlowStatus Resources() const;
@@ -42,6 +47,7 @@ struct RobotIntegration::Impl {
     GridSnapshot computed_, frozen_, live_;
     Scan2DPtr latest_scan_;
     MappingStatus status_;
+    SensorFlow::Counts accounted_inputs_;
     DataFlowStatus resources_;
     bool updating_ = false, active_ = false;
     std::int64_t last_publication_us_ = -1;

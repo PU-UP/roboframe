@@ -1,6 +1,6 @@
 #pragma once
-#include "integration/pose_buffer.hpp"
-#include <roboframe/mapping.hpp>
+#include "integration/data_flow/pose_buffer.hpp"
+#include <roboframe/grid.hpp>
 #include <roboframe/data_flow.hpp>
 #include <roboframe/transforms2d.hpp>
 #include <roboframe/execution.hpp>
@@ -14,8 +14,16 @@ namespace roboframe {
 class SensorFlow {
 public:
     using Sink = std::function<Admission(std::uint64_t, Scan2DPtr, ScanTransforms2D)>;
+    struct Options {
+        GridFrame frame = GridFrame::odom;
+        std::int64_t max_pose_gap_us = 250000, max_correction_age_us = 20000000;
+    };
+    // Lifetime input counters; only the command side attributes them to a business task.
+    struct Counts {
+        std::uint64_t received = 0, ignored = 0, dropped = 0, drop_sync = 0, drop_queue = 0;
+    };
     struct State {
-        MappingStatus counts;
+        Counts counts;
         DataFlowStatus resources;
         std::size_t pending = 0;
         std::uint64_t submitted = 0;
@@ -27,33 +35,33 @@ public:
         MapCorrection2D correction;
         TransformStatus2D tf;
     };
-    SensorFlow(MappingOptions options, Sink sink);
+    SensorFlow(Options options, Sink sink);
     void PushOdometry(const TimedPose2D& pose);
     void PushReference(const MapPose2D& pose);
     void PushScan(Scan2DPtr scan);
-    void Begin(std::uint64_t generation);
-    State Finish(); // Close scan admission and resolve remaining timestamp matches.
-    void ResumeMapping(); // Empty FINISH rejected without ending the session.
-    void Live();
-    State Close();
+    State Open(std::uint64_t generation); // New data context, reset TF and pending inputs.
+    State Pause(); // Stop new scan/reference admission; resolve remaining timestamp matches.
+    void Resume(); // Reopen the same context without resetting data or counters.
+    State Close(); // Discard pending inputs and invalidate TF; return pre-close accounting.
     void Shutdown();
     State status() const;
     Events TakeEvents(); // Product publication only; downstream routing already happened at ingress.
 private:
-    void Drain(bool finishing);
+    void Drain(bool flush);
     void Drop(bool sync);
     State StateLocked() const;
     void RequireOpen() const;
     mutable std::mutex mutex_;
-    const MappingOptions options_;
+    const Options options_;
     const Sink sink_;
     PoseBuffer poses_;
     odom::PassthroughOdomComponent odometry_;
     lidar_map::RecordedLidarMapComponent lidar_;
     std::deque<Scan2DPtr> pending_;
-    MappingPhase phase_ = MappingPhase::idle;
+    enum class AdmissionState { closed, accepting, paused };
+    AdmissionState admission_ = AdmissionState::closed;
     std::uint64_t generation_ = 0, submitted_ = 0;
-    MappingStatus counts_;
+    Counts counts_;
     DataFlowStatus resources_;
     TransformStatus2D transforms_;
     MapCorrection2D correction_;

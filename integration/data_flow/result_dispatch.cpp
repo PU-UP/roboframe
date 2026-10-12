@@ -1,47 +1,15 @@
 #include "integration/robot_integration_impl.hpp"
-#include <roboframe/log.hpp>
 namespace roboframe {
 std::size_t RobotIntegration::Impl::PendingCompute() const { return inputs_.status().submitted - completed_; }
-MappingStatus RobotIntegration::Impl::Status() const {
-    auto result = status_;
-    const auto input = inputs_.status().counts;
-    result.received = input.received; result.ignored = input.ignored;
-    result.dropped += input.dropped; result.drop_sync += input.drop_sync; result.drop_queue += input.drop_queue;
-    return result;
-}
 void RobotIntegration::Impl::Poll() {
     const auto events = inputs_.TakeEvents();
     if (events.has_odom && outputs_.odometry) outputs_.odometry(events.odom);
     if (events.has_correction && outputs_.correction) outputs_.correction(events.correction);
     if (events.has_tf && outputs_.transforms) outputs_.transforms(events.tf);
     MapExecution::Result result;
-    for (std::size_t i = 0; i < compute_capacity && computation_.Take(result); ++i) {
-        if (result.generation != generation_ || !updating_) { ++resources_.stale_results; continue; }
-        ++completed_;
-        const bool mapping = status_.phase == MappingPhase::mapping || status_.phase == MappingPhase::finishing;
-        try {
-            if (result.error) std::rethrow_exception(result.error);
-            if (result.canceled) throw std::runtime_error("unexpected current-session cancellation");
-            computed_ = std::move(result.output.map); copied_bytes_ = result.output.copied_bytes;
-            latest_scan_ = std::move(result.input.scan);
-            if (mapping) {
-                ++status_.integrated; status_.used_rays += result.output.update.used_rays;
-                status_.outside_rays += result.output.update.outside_rays;
-            } else ++resources_.live_updates;
-            Publish(latest_scan_);
-        } catch (const std::out_of_range&) {
-            if (mapping) { ++status_.dropped; ++status_.drop_bounds; } else ++resources_.live_dropped;
-        } catch (const std::exception& error) {
-            ROBO_LOG_ERROR("integration") << "compute failed: " << error.what();
-            const auto input = inputs_.Close();
-            const auto abandoned = 1 + input.pending + input.submitted - completed_;
-            if (mapping) { status_.dropped += abandoned; status_.drop_cancel += abandoned; }
-            else resources_.live_dropped += abandoned;
-            computation_.Reset(0); completed_ = input.submitted; updating_ = false;
-            status_.phase = MappingPhase::idle; EmitMapping(MappingEventKind::failed);
-        }
-    }
-    if (status_.phase == MappingPhase::finishing && !PendingCompute()) CompleteFinish();
+    for (std::size_t i = 0; i < compute_capacity && computation_.Take(result); ++i)
+        OnMapResult(std::move(result));
+    AdvanceWorkflows();
 }
 void RobotIntegration::Impl::Publish(const Scan2DPtr& scan, bool force) {
     if (!scan || !computed_ || (live_ && live_->revision == computed_->revision)) return;
@@ -51,7 +19,7 @@ void RobotIntegration::Impl::Publish(const Scan2DPtr& scan, bool force) {
     last_publication_us_ = scan->stamp_us;
     ++resources_.shared_scans; ++resources_.publications;
     if (outputs_.map) outputs_.map({generation_, live_});
-    if (status_.phase == MappingPhase::mapping) EmitMapping(MappingEventKind::progress);
+    OnMapPublished();
 }
 void RobotIntegration::Impl::WaitPlanner() {
     RequireActive();
@@ -62,10 +30,13 @@ void RobotIntegration::Impl::WaitPlanner() {
 }
 DataFlowStatus RobotIntegration::Impl::Resources() const {
     auto result = resources_;
-    const auto input = inputs_.status().resources;
+    const auto state = inputs_.status();
+    auto task = status_;
+    CountInputs(state.counts, task, result);
+    const auto& input = state.resources;
     result.lidar_scans = input.lidar_scans; result.correction_outputs = input.correction_outputs;
     result.missed_references = input.missed_references; result.tf_dropped = input.tf_dropped;
-    result.compute_rejected = input.compute_rejected; result.live_dropped += input.live_dropped;
+    result.compute_rejected = input.compute_rejected;
     const auto work = computation_.status();
     result.compute_pending = work.queued; result.compute_active = work.active;
     result.compute_results = work.completed; result.compute_retained = work.retained;

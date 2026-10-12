@@ -2,7 +2,32 @@
 #include "integration/robot_integration.hpp"
 #include <roboframe/log.hpp>
 #include <csignal>
-#include <iostream>
+#include <utility>
+
+namespace {
+roboframe::ProductInputs BindProduct(roboframe::RobotIntegration& product) {
+    roboframe::ProductInputs inputs;
+    inputs.sensors.odometry = [&](const roboframe::TimedPose2D& pose) { product.PushOdometry(pose); };
+    inputs.sensors.scan = [&](roboframe::Scan2DPtr scan) { product.PushScan(std::move(scan)); };
+    inputs.sensors.map_reference = [&](const roboframe::MapPose2D& pose) { product.PushMapReference(pose); };
+    inputs.mapping.configure = [&](roboframe::MappingOptions options) { product.Configure(options); };
+    inputs.mapping.start = [&](std::uint64_t id) { product.StartMapping(id); };
+    inputs.mapping.finish = [&] { product.FinishMapping(); };
+    inputs.mapping.cancel = [&] { product.CancelMapping(); };
+    inputs.mapping.status = [&] {
+        const auto map = product.map();
+        return roboframe::MappingReport{product.mapping_status(), product.pending(), map ? map->revision : 0};
+    };
+    inputs.maps.save = [&](const std::string& name) { product.SaveMap(name); };
+    inputs.maps.load = [&](const std::string& name) { product.LoadMap(name); };
+    inputs.maps.snapshot = [&](const std::string& name) { product.SnapshotMap(name); };
+    inputs.maps.view = [&](bool baseline) { return product.map_view(baseline); };
+    inputs.diagnostics.transforms = [&] { return product.transforms(); };
+    inputs.diagnostics.resources = [&] { return product.data_flow_status(); };
+    inputs.diagnostics.check_readers_idle = [&] { product.WaitPlanner(); };
+    return inputs;
+}
+}
 
 int main(int argc, char** argv) {
     try {
@@ -21,10 +46,18 @@ int main(int argc, char** argv) {
         std::signal(SIGPIPE, SIG_IGN);
 #endif
         roboframe::RobotIntegration integration(argv[1], std::chrono::milliseconds(delay));
-        roboframe::StdioInterface interface(0, 1, integration);
+        roboframe::StdioInterface interface(0, 1, BindProduct(integration));
         integration.SetOutputs(interface.Outputs());
-        try { interface.Run(); }
-        catch (...) { integration.SetOutputs({}); throw; }
+        try {
+            while (interface.ProcessNext([&] { integration.Poll(); }) ==
+                   roboframe::StdioInterface::ReceiveResult::received) {}
+            integration.Shutdown(); // This product stops on QUIT/EOF; transport only reports the event.
+            interface.Finish();
+        } catch (...) {
+            integration.SetOutputs({});
+            integration.Shutdown();
+            throw;
+        }
         integration.SetOutputs({});
     } catch (const std::exception& error) {
         ROBO_LOG_ERROR("robot-runtime") << error.what();

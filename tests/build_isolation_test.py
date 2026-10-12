@@ -163,19 +163,25 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
     targets.write_text(original_targets)
     checks.append('PASS: product SDK selection, legacy packages and incompatible component SDKs are rejected')
 
-    # No component headers or integration private headers exist in this compile environment.
+    # Interface is independently linkable: SDK only, no integration headers or objects.
     public = work / 'public-only'
-    (public / 'integration').mkdir(parents=True)
-    (public / 'interface').mkdir()
+    (public / 'interface').mkdir(parents=True)
     copy(relocated / 'include/roboframe', public / 'include/roboframe')
-    for name in ['integration/robot_integration.hpp', 'interface/stdio_interface.hpp',
-                 'interface/stdio_interface.cpp', 'interface/stdio_channel.hpp',
-                 'interface/stdio_channel.cpp', 'main.cpp']:
+    for name in ['interface/stdio_interface.hpp', 'interface/stdio_interface.cpp',
+                 'interface/stdio_channel.hpp', 'interface/stdio_channel.cpp']:
         shutil.copy2(ROOT / name, public / name)
+    shutil.copy2(ROOT / 'tests/interface_binding_test.cpp', public / 'binding_test.cpp')
+    run(['c++', '-std=c++14', '-pedantic-errors', '-pthread', '-I' + str(public),
+         '-I' + str(public / 'include'), public / 'interface/stdio_interface.cpp',
+         public / 'interface/stdio_channel.cpp', public / 'binding_test.cpp', '-o', work / 'binding_test'])
+    run([work / 'binding_test'])
+    checks.append('PASS: interface links/runs with SDK only and two product bindings, no integration headers/libraries')
+    (public / 'integration').mkdir()
+    shutil.copy2(ROOT / 'integration/robot_integration.hpp', public / 'integration/robot_integration.hpp')
+    shutil.copy2(ROOT / 'main.cpp', public / 'main.cpp')
     run(['c++', '-std=c++14', '-pedantic-errors', '-fsyntax-only', '-I' + str(public),
-         '-I' + str(public / 'include'), public / 'interface/stdio_interface.cpp', public / 'interface/stdio_channel.cpp',
-         public / 'main.cpp'])
-    checks.append('PASS: interface and main compile with SDK + public entry only, no component/private headers')
+         '-I' + str(public / 'include'), public / 'main.cpp'])
+    checks.append('PASS: product main compiles with SDK + public entry only, no component/private headers')
 
     headers = sorted((relocated / 'include').rglob('*.hpp'))
     for header in headers:

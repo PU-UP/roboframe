@@ -2,7 +2,7 @@
 这里汇总已讨论但尚未实施的架构事项。后续待办更新此文件，不再分散另建清单。
 已完成：interface 边界数据迁入 SDK、SDK 准入规则、组件独立安装和混合构建。
 已完成接口隔离：integration 公开头文件隐藏装配；组件依赖 PRIVATE；main 持有 integration，
-stdio 借用公开入口。已完成 SDK/产品版本职责集中；组件源码指纹和安装编译记录自动生成，独立契约版本已删除。
+stdio 仅依赖 SDK 具名输入/输出绑定。已完成 SDK/产品版本职责集中；组件源码指纹和安装编译记录自动生成，独立契约版本已删除。
 验证包括移除组件/私有头文件后的 interface 编译，以及配置失败重试。
 大数据共享已实现：只读 scan、分块地图快照、受限异步 planner 读取；见 [验收说明](docs/data-sharing.md)。
 已完成 Intel 数据来源核查与 corrected-log 接入：同一组扫描用原始位姿仍扭曲，使用发布者校正位姿可形成
@@ -20,6 +20,11 @@ Python 持续接收并分流。真实管道覆盖慢读合并、可靠队列溢�
 FINISH 接受/完成分离，取消代际隔离和协作关闭已实现。慢计算、迟到结果、回调线程及真实 IPC 验收见 [执行模型](docs/execution.md)。
 后续触发：真实 SLAM/推理接入时分别评估计算执行边界；不把它们塞入地图串行通道，也不先做通用调度器。
 大地图编解码/文件保存成为实际延迟瓶颈时，再增加有界 I/O 任务；目前它们仍在 owner 同步执行。
+
+已完成 integration 数据/指令职责整理：`data_flow/` 收纳输入配对和 `result_dispatch.cpp`；
+`workflow/mapping.cpp` 负责产品指令、业务结果解释和状态转换。SensorFlow 不再引用业务状态/配置/统计类型，
+只提供数据上下文的 Open/Pause/Resume/Close；任务计数由指令侧按快照归属。
+此边界适用于未来所有机器人业务；建图只是当前实现，不新增平级的 sensor/mapping 业务分类。
 
 ## 当前优先顺序（2026-10-12）
 
@@ -47,8 +52,9 @@ FINISH 接受/完成分离，取消代际隔离和协作关闭已实现。慢计
 
 ## interface 稳定边界
 
-当前 StdioInterface 依赖 RobotIntegration 的公开入口，这种依赖符合 interface→integration；它已经不创建 integration、
-不包含组件实现，也不直接操作 BT 或内部任务对象。输出方向已经通过具名回调补齐，无需为消除正常依赖再造一层通用分发器。
+已完成具体产品依赖隔离：StdioInterface 仅依赖 SDK ProductInputs/ProductOutputs，不包含或链接 integration。
+main 负责具名绑定、业务推进和退出策略；interface 返回 QUIT/EOF/残缺报文等结果，不替产品决定关闭。
+workflow/ 按实际业务组织流程；目前只有 mapping.cpp，导航和 BT 在需要时加入。
 
 interface 负责 IPC、解码/编码、边界校验和 SDK 数据转换；integration 负责产品模式、任务意图、接线和结果汇集。
 传输骨架应稳定，增加一种外部命令或数据类型时仍可能增加协议映射/回调/发布代码，不能承诺完全不改 interface。

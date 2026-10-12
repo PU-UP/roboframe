@@ -4,15 +4,18 @@ C++14 的 interface → integration → component 骨架。只有一个产品进
 history/ 和 build*/ 中旧数据、产物不参与构建，也不代表当前实现。
 
 ~~~text
-main.cpp                               持有 integration，向 interface 注入引用
+main.cpp                               产品绑定、业务推进、退出策略与回调生命周期
 interface/stdio_interface.*             IPC 编解码、输入校验、响应与主动发布
 interface/stdio_channel.*               非阻塞管道、有界队列、断连与关闭
 integration/robot_integration.hpp       仅依赖 SDK 的产品公开入口
 integration/robot_integration_impl.hpp  私有组件装配与状态
 integration/robot_integration.cpp       入口实现、版本核对、生命周期
-integration/data_flow.cpp              数据接线、同步、分发
-integration/pose_buffer.*               产品内部的有界缓存与插值工具
-integration/mapping_flow.cpp            建图流程、地图操作
+integration/data_flow/                 数据输入、配对、计算结果分发
+  sensor_flow.*                        输入同步和接收策略，不解释业务模式
+  pose_buffer.*                        有界位姿缓存与插值
+  result_dispatch.cpp                  Poll 收取结果、共享数据发布
+integration/workflow/                  业务流程与编排，未来按实际业务扩展
+  mapping.cpp                          当前建图流程、地图操作与结果处理
 components/odom/                        PassthroughOdomComponent
 components/lidar-map/                   RecordedLidarMapComponent（录制校正后端）
 components/map-updater/                 OccupancyMapComponent
@@ -29,7 +32,9 @@ tests/                                 产品流程、IPC、独立交付验证
 当前无需额外 contract.hpp。SDK 的准入规则与未来产品分区见 [SDK 说明](sdk/README.md)。
 具体实现采用具名组件和文件，可以分别作为独立仓库交付；不要求所有里程计实现集中在一个 odom 仓库。
 具体实现由 integration 私有实现静态装配，没有动态插件或实现注册框架。
-main 创建并持有 RobotIntegration；StdioInterface 只引用公开入口。
+main 创建并持有 RobotIntegration，通过 SDK ProductInputs 绑定具名入口；StdioInterface 不包含或链接 integration。
+main 驱动 ProcessNext，并提供 integration.Poll 作为空闲/读间推进函数，二者在同一业务线程执行。
+interface 只返回 QUIT/EOF/残缺输入等结果；当前产品选择结束后关闭组件并排空输出。
 CONFIG 调用 Configure 后才创建并激活组件；失败不留下半配置的对象，可以重试。
 成功后拒绝重复配置。QUIT/EOF 关闭组件；异常退出由 integration 析构兜底。
 组件依赖为 PRIVATE，不再通过 integration 向 interface 传播组件头文件。
@@ -40,6 +45,24 @@ Map updater 更新占据地图，Map server 保存/读取地图；它们不决�
 MappingStatus 只表示建图会话，不代表组件生命周期或整个产品状态。
 同一个 integration 可以多次建图、取消、加载；其他流程可以复用相同组件，
 无需重启或新建 Integration 基类。
+
+## integration 内部：数据流与业务编排
+
+数据流负责 typed 输入、对时、TF、算法接线与结果分发；workflow 负责业务意图、任务状态、
+数据接收策略和取消。sensor 是数据流的一部分，建图是 workflow 目前实现的一项业务，两者不是平级分类。
+未来工作模式和 BT 进入 workflow；高频传感器与算法数据不经过 BT，不把机器人业务状态复制进传感器处理对象。
+
+`SensorFlow` 只提供 Open/Pause/Resume/Close 数据入口操作、数据配置和累计输入统计；
+不引用 MappingPhase、MappingOptions 或 MappingStatus。业务流程决定何时调用，以及哪些统计属于当前业务。
+`result_dispatch.cpp` 收取完成结果，再调用编排侧的具名结果处理函数；结果可能推进业务，业务也可能调整数据接线。
+这些是职责划分，不是每部分一条线程：SensorFlow 有独立短锁，指令与 Poll 共享业务 owner，耗时计算使用 ExecutionChannel。
+`workflow/mapping.cpp` 与 `result_dispatch.cpp` 仍是 RobotIntegration 私有实现，不新增流程基类或事件总线。
+
+interface 的输入/请求以 SDK inputs.hpp 的具名回调分组：传感器、建图、地图操作、诊断。
+产品在 main 的 BindProduct 中接入自己的实现；未绑定的入口返回明确的 unsupported 错误。
+相同协议下更换产品或内部 BT/算法只改产品绑定和 integration；新增外部消息语义仍需扩展协议适配。
+回调是同步交付，不会自动切线程；未来 ROS/DDS 的业务请求仍须投递到业务 owner，不能任意线程直调。
+输入绑定捕获的产品对象须比 interface 活得久；关闭时先停止发布并解绑，再销毁接收方。
 
 ## 架构原则：能力封装与按需组合
 **默认由一个 component 完整承担一项产品能力；integration 具备组合能力，但不要求算法都拆成小组件。**

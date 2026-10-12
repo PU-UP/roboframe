@@ -63,7 +63,8 @@ RobotIntegration::Impl::Impl(MappingOptions options, std::string directory, Prod
           }
           const auto update = grid_.PushScan(work.scan, work.transforms, [&] { return cancel.canceled(); });
           return MapResult{grid_.Snapshot(), update, grid_.copied_bytes()};
-      }), inputs_(options, [this](std::uint64_t generation, Scan2DPtr scan, ScanTransforms2D transforms) {
+      }), inputs_({options.grid.frame, options.max_pose_gap_us, options.max_correction_age_us},
+                  [this](std::uint64_t generation, Scan2DPtr scan, ScanTransforms2D transforms) {
           return computation_.Submit(generation, {std::move(scan), transforms});
       }), store_(std::move(directory)), frame_(options.grid.frame) {
     if (delay.count() < 0 || delay.count() > 5000) throw std::invalid_argument("invalid compute test delay");
@@ -86,6 +87,7 @@ void RobotIntegration::Impl::RequireActive() const {
 void RobotIntegration::Impl::Shutdown() {
     if (!active_) return;
     const auto input = inputs_.Close();
+    CaptureInputs(input);
     const auto abandoned = input.pending + input.submitted - completed_;
     inputs_.Shutdown(); // Closes concurrent ingress before joining any computation.
     if (status_.phase == MappingPhase::mapping || status_.phase == MappingPhase::finishing) {

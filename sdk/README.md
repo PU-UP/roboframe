@@ -1,4 +1,4 @@
-# Roboframe SDK 5.1
+# Roboframe SDK 5.2
 interface、integration、component 共用的公开契约和小型基础设施。
 SDK 位于主目录的 sdk/，与 interfaces/、products/、components/ 并列；
 后两种复数目录是未来多产品布局，当前不为占位而搬动目录或创建空产品。
@@ -21,8 +21,11 @@ SDK 的 C++ 对象不是线协议，不能直接把对象内存作为 IPC 数据
 integration 装配具体组件，所以其实现依赖组件的公开接口是正常的；
 interface 不依赖组件数据类型或头文件。integration 公开入口只引用 SDK；
 具体组件和 PoseBuffer 在私有 robot_integration_impl.hpp 中，CMake 组件依赖为 PRIVATE。
-main 拥有 integration，StdioInterface 只借用引用。interface 仍依赖具体产品的公开操作，
-本次没有引入适用于所有产品的抽象接口。
+main 拥有 integration，通过 inputs.hpp 具名回调把产品入口交给 StdioInterface；interface 只链接 SDK。
+这些回调按当前协议的传感器/建图/地图操作/诊断分组，不是所有机器人的统一能力清单。
+未绑定入口表示产品不支持；后续新增能力按领域或产品扩展，不往单个请求里塞可选字段或 any。
+输入绑定不拥有产品、不创建线程；产品须活到 interface 销毁之后，业务请求只能在业务 owner 执行。
+SDK 不提供 Poll/Shutdown 运行回调：产品主入口安排推进和关闭，传输层不决定业务生命周期。
 
 组件封装与组合遵循 [主文档架构原则](../README.md#架构原则能力封装与按需组合)：
 SDK 统一必要的输出数据语义，不据此要求所有算法采用同一种输入或统一能力基类。
@@ -50,6 +53,7 @@ SDK 统一必要的输出数据语义，不据此要求所有算法采用同一�
 | scan2d.hpp | base_link 下只读二维命中点；不代表所有原始雷达消息 |
 | grid.hpp / grid_cells.hpp | 显式 odom/map 系二维栅格、4 KiB 分块写时复制、只读快照 |
 | data_flow.hpp | 产品对外的数据共享资源统计 |
+| inputs.hpp | 具名输入与请求绑定、MappingReport；不依赖具体 integration，不管理线程 |
 | outputs.hpp | 产品具名输出、建图事件、进程内地图上下文；不含传输或事件总线 |
 | mapping.hpp | 可选建图公开参数与状态，不规定产品工作流 |
 | log.hpp | ROBO_LOG_INFO 等日志，默认 stderr，可替换 sink |
@@ -77,6 +81,7 @@ SDK 2.0 已移除独立契约版本；SDK 3.0 将 Grid::cells 改为分块写时
 Scan2D 改为只能移动而不能复制。SDK 4.0 增加明确的 TF 数据结构、GridSpec.frame 和 mapper 完整变换入参。
 这些 major 版本的公开接口变化要求旧组件开发包重建。SDK 4.1 仅新增 outputs.hpp，未修改现有组件数据布局。
 SDK 5.0 增加 finishing/failed 和计算通道资源字段，改变公开状态布局及 FINISH 完成语义；旧包重建。
+SDK 5.1 新增通用执行通道；5.2 新增 inputs.hpp，不改变现有数据布局，产品选择同步更新。
 组件的编译 SDK 仍自动记录，无需组件开发者维护额外版本字段。
 Scan2DPtr 和 GridSnapshot 跨模块只读共享；具体所有权与更新约束见
 [数据共享说明](../docs/data-sharing.md)。

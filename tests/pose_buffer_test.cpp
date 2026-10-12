@@ -1,4 +1,4 @@
-#include "integration/pose_buffer.hpp"
+#include "integration/data_flow/pose_buffer.hpp"
 #include <cmath>
 #include <limits>
 #include <stdexcept>

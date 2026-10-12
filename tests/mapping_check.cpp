@@ -84,6 +84,11 @@ int main() {
     Drain(integration);
     Check(integration.data_flow_status().live_dropped == 1);
     Check(integration.mapping_status().dropped == 0);
+    const auto task_received = integration.mapping_status().received;
+    integration.PushScan(Scan(450));
+    integration.PushOdometry({600, {}}); // Timestamp bracket exceeds 100 us: a live input drop.
+    Check(integration.data_flow_status().live_dropped == 2);
+    Check(integration.mapping_status().dropped == 0 && integration.mapping_status().received == task_received);
     integration.SaveMap("second");
     integration.LoadMap("first");
     Check(integration.map()->cells == frozen->cells);
@@ -91,8 +96,10 @@ int main() {
     Check(integration.map()->cells == frozen->cells);
     integration.StartMapping(2);
     Reject([&] { integration.FinishMapping(); });
-    integration.PushScan(Scan(350));
-    integration.PushOdometry({600, {4, 0, 0}});
+    Check(integration.mapping_status().received == 0 && integration.mapping_status().dropped == 0);
+    Check(integration.data_flow_status().live_dropped == 2); // Preserved across data context resets.
+    integration.PushScan(Scan(650));
+    integration.PushOdometry({900, {4, 0, 0}});
     Check(integration.mapping_status().dropped == 1);
     for (int i = 0; i < 65; ++i) integration.PushScan(Scan(1000 + i));
     Check(integration.pending() == 64 && integration.mapping_status().dropped == 2);

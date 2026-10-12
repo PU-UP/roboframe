@@ -92,7 +92,7 @@ bool StdioChannel::NextLine(std::string& line, const std::function<void()>& serv
             return true;
         }
         if (eof_) {
-            if (!partial_.empty() || oversized_) throw std::invalid_argument("incomplete line");
+            if (!partial_.empty() || oversized_) throw InputError("incomplete line");
             return false;
         }
         pollfd fds[] = {{input_, POLLIN, 0}, {output_, short(pending_.empty() ? 0 : POLLOUT), 0}};

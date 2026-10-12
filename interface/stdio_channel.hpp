@@ -4,10 +4,12 @@
 #include <deque>
 #include <string>
 #include <functional>
+#include <stdexcept>
 namespace roboframe {
 // POSIX pipe transport only. All methods run on the interface owner thread.
 class StdioChannel {
 public:
+    struct InputError : std::invalid_argument { using std::invalid_argument::invalid_argument; };
     StdioChannel(int input, int output);
     ~StdioChannel();
     StdioChannel(const StdioChannel&) = delete;

@@ -31,6 +31,18 @@ SensorFlow 的短锁只保护这组相关传感器的缓存和路由状态，不
 输入锁内仅调用当前已知快速、同步的适配组件；真实耗时算法必须配置执行边界，不能直接替换后继续在输入锁内运行。
 同一个不可变 scan 引用经录制 lidar-map、地图算法和 planner 读取；输入转换只在边界做一次。
 
+## 数据与业务分离
+
+`data_flow/` 与 `workflow/` 是数据处理和业务编排两种职责，不是 sensor/mapping 两种并列模块。
+SensorFlow 不知道建图或其他机器人业务；Open 建立数据上下文并清理旧 TF，Pause 停止新增扫描和参考位姿、
+清算未配对扫描，Resume 恢复同一上下文，Close 丢弃待处理数据并使 TF 失效。暂停/关闭扫描通路不会停止 odom 输入，
+只有 Shutdown 才永久关闭所有输入。接收状态不是机器人业务状态。
+
+输入累计计数不因业务重置；指令侧在改变接收策略和业务状态的边界取得快照，按计数差归属当前任务。
+因此 FINISH 后的持续更新不会污染已完成建图的统计，新会话从自己的基线重新计数。
+结果分发调用 OnMapResult / OnMapPublished / AdvanceWorkflows，业务结果解释和状态转换集中在指令侧。
+这些是当前产品的具名调用，不增加通用消息协议或独立业务线程。未来其他业务遵循同一边界，按实际规模再拆文件。
+
 ## SDK 的最小公共机制
 
 `execution.hpp` 提供 `ExecutionChannel<Input, Output>`，不引用组件、地图、建图状态或产品配置。
@@ -58,10 +70,10 @@ SensorFlow 的短锁只保护这组相关传感器的缓存和路由状态，不
 | 文件 | 内容 |
 |---|---|
 | sdk/include/roboframe/execution.hpp | 唯一公共执行机制：有界容量、过载、异常结果、代际取消、关闭。 |
-| integration/sensor_flow.hpp/.cpp | 并发 typed 入口；快速 odom/lidar-map 接线、64 帧对时队列、512 个 pose、完整 TF 匹配。 |
+| integration/data_flow/sensor_flow.hpp/.cpp | 并发 typed 入口；快速 odom/lidar-map 接线、64 帧对时队列、512 个 pose、完整 TF 匹配。 |
 | integration/robot_integration_impl.hpp/.cpp | 装配算法与 `ExecutionChannel<ScanWork, MapResult>`；处理函数中只有调用算法、Reset 和生成结果。 |
-| integration/data_flow.cpp | 业务 owner 收取结果、会话检查、状态统计、共享地图发布。 |
-| integration/mapping_flow.cpp | 业务流程与数据接收门禁的有序切换。 |
+| integration/data_flow/result_dispatch.cpp | 业务 owner 收取结果、分发到指令侧结果处理函数、共享数据发布；不决定业务状态。 |
+| integration/workflow/mapping.cpp | 指令校验、业务结果处理、会话检查、任务统计、终态和接收策略；目前实现建图与地图操作。 |
 | components/planner/... | 复用同一个 ExecutionChannel，删除原先重复的线程循环；仍仅作共享读取验证。 |
 
 地图计算通道总容量 8；planner 通道总容量 2，采用 latest_pending。planner 收取结果后再提交新输入，
@@ -116,9 +128,41 @@ SDK 5.1 新增 execution.hpp，不改变已有 SDK 数据布局；组件构建�
 旧产品公开入口的 mapping_status 改为返回值快照，调用方应重编；不要跨线程持有可变状态引用。
 SDK 与 product 的输出机制不会无限保存历史快照；外部消费者若永久持有快照，其内存仍由消费者负责。
 
-本次验收：17 项常规测试和相同测试的 ASan/UBSan 通过；五组件独立安装、混合源码/包构建、
+此前执行通道重构验收：17 项常规测试和相同测试的 ASan/UBSan 通过；五组件独立安装、混合源码/包构建、
 25 个公开头文件隔离编译通过。全量回放 13,631 帧、910 次校正，计算过载拒收为 0，
 计算通道持有峰值 3 / 8，planner 峰值 2，读取不一致为 0。17 份地图文件与上一版逐字节一致。
 168 帧初始 TF 未就绪跳过与之前一致；结束前融合 12,099 帧、结束后更新 1,364 帧。
 产物：`build-product/execution-verified/replay.html` 和 `summary.json`。
 当前没有 TSan 通过结论（此前 WSL 初始化失败）；ASan/UBSan 和并发测试不等于证明不存在所有数据竞争。
+
+
+数据/指令职责整理验收（2026-10-12）：18 项常规测试通过，新增 sensor_flow_test 不创建业务对象，
+验证数据上下文的开启/暂停/恢复/关闭、暂停时 odom 继续接收、原始引用交付及累计统计。
+mapping_check 增加结束后的输入丢弃统计隔离与新会话基线验证。
+全量回放 13,631 帧、910 次校正；本轮在 10,904 帧结束建图，后续 2,727 帧继续更新，
+任务统计保持不变，计算过载为 0，计算峰值 3/8、planner 峰值 2，读取不一致为 0。
+完整 live 地图与 execution-verified 逐字节一致；因结束位置不同，不比较两轮的基准地图和进度快照。
+五组件独立安装、纯包/混合构建与 25 个公开头文件隔离编译再次通过。
+产物：`build-product/flow-verified/replay.html` 和 `summary.json`。本轮未重新运行 sanitizers。
+
+
+interface 输入解耦后，业务推进由 main 安排：`ProcessNext(service)` 在接收调用线程上执行 service，
+当前绑定 integration.Poll；它不是工作线程，也不自动并发调用 integration。异步计算仍使用既有执行通道。
+workflow/ 是流程目录，当前 mapping.cpp 实现建图；未来 BT 放在编排侧，不接管高频数据分发。
+同一协议的产品差异通过具名回调绑定解决；取消、过载、结果代次和所有权约束保持原有规则。
+
+
+workflow 与 interface 绑定重构验收（2026-10-12）：19 项常规测试及 ASan/UBSan 全部通过。
+新增 interface_binding_test 只链接 stdio 与 SDK，分别绑定支持建图请求和仅支持传感器的两个测试接收方；
+验证未绑定能力明确拒绝、同线程回调、QUIT/EOF/残缺报文退出原因、stopped 先于 BYE、业务推进异常不被吞掉。
+全量回放 13,631 帧、910 次校正，在第 12,267 帧发出结束指令；结束后继续更新 1,364 帧，任务统计不变。
+全部 17 份地图文件与 execution-verified 逐字节一致，计算过载为 0，计算峰值 4/8，planner 峰值 2。
+产物：`build-product/workflow-verified/replay.html` 和 `summary.json`。
+
+本次 review 覆盖接口输入/输出绑定、线程归属、缺失能力、流程计数、迟到结果和关闭路径。
+已修正退出原因合并造成产品无法区分 QUIT/EOF 的问题；通道残缺输入使用单独异常类型，
+产品推进异常交回主入口处理。主入口在正常停止后排空输出，异常时先解绑输出再关闭，避免悬空回调或向坏连接继续发布。
+现有同步文件 I/O、地图编码和协作式取消的限制保留；未实现 BT、多产品完整应用、ROS/DDS 或 ARM 验证。
+
+独立交付验收通过：五组件独立安装、纯包/混合构建、26 个公开头文件独立编译。
+移除所有 integration 头文件与库后，interface 仍可仅凭 SDK 编译链接并运行两种产品绑定；产品 main 仅需 SDK 与公开产品入口。

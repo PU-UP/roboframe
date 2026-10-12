@@ -6,19 +6,21 @@
 
 | 文件 | 职责 |
 |---|---|
+| sdk/include/roboframe/inputs.hpp | 按能力分组的输入/请求回调；无 integration 类型 |
 | sdk/include/roboframe/outputs.hpp | ProductOutputs 的具名回调、MappingEvent、MapView；只引用 SDK 和标准库 |
 | integration/robot_integration.hpp/.cpp | 注册输出、公开业务入口、组件生命周期；不认识 IPC 编码 |
-| integration/data_flow.cpp | odom 独立输出、全局校正/TF 接线、共享地图更新通知 |
-| integration/mapping_flow.cpp | 开始、完成、取消、保存、加载的实际状态变化 |
+| integration/data_flow/ | sensor_flow 接收和配对；result_dispatch 发布 odom、校正、TF 与共享地图通知 |
+| integration/workflow/mapping.cpp | 产品指令和业务结果处理；目前包括开始、完成、取消、保存、加载 |
 | interface/stdio_interface.hpp/.cpp | 输入解析、响应/事件编码、订阅和快照读取 |
 | interface/stdio_channel.hpp/.cpp | POSIX 非阻塞管道、行边界、有界队列、慢读与断连处理 |
-| main.cpp | 装配 integration 和 interface 回调；销毁接收方前解除回调 |
+| main.cpp | BindProduct 连接具体产品；推进业务、决定退出策略、停止发布并解除回调 |
 | tools/mapping/replay.py | Python 持续读取输出，分流响应/事件；发送数据和业务请求 |
 
 ~~~mermaid
 flowchart LR
   P[外部 Python] -->|REQ / DATA| I[interface]
-  I -->|SDK 输入 / 产品意图| G[integration]
+  I -->|SDK 具名输入回调| B[产品绑定]
+  B --> G[integration]
   G --> C[components]
   C -->|数据与结果| G
   G -->|具名回调 / SDK 数据| I
@@ -30,6 +32,20 @@ integration 的传感器入口允许并发；业务方法、查询和输出回�
 内存分配失败按进程错误退出。当前只有一个输出接收端；不引入多订阅者注册表。
 stdio 的回调只编码小消息并排队；地图通知只包含元数据。组件工作线程不直接写 stdout。
 地图回调接收同一 GridSnapshot，可保留只读引用。跨 IPC 的完整地图会序列化，不宣称零拷贝。
+
+## 多产品与运行驱动
+
+StdioInterface 不包含 RobotIntegration，也不链接其库。构造时接受 SDK ProductInputs；产品 main 绑定实际方法，
+输出仍使用 ProductOutputs。另一个产品使用相同消息格式时只换绑定；不支持的操作返回 `ERROR unsupported: <命令>`。
+新增外部能力仍需要协议编码/解码，不承诺 interface 永不修改。当前诊断命令属于已有产品协议，不冒充通用机器人能力。
+
+main 每次调用 ProcessNext 处理一条输入，同时传入一个服务函数用于读间/空闲推进业务。
+该函数在调用线程执行；stdio 不知道它是 Poll、BT tick 还是其他产品逻辑。所有业务回调与推进保持单一 owner。
+ProcessNext 返回 received/quit/end_of_input/invalid_input；管道故障或服务函数异常向运行入口抛出。
+只有通道产生的 InputError 被当作残缺输入编码；不能将业务推进的 invalid_argument 吞成协议错误。
+当前 main 在任何连接结束时停止产品，正常路径先发布 stopped，再由 Finish 回复 QUIT 的 BYE 并排空输出；
+异常路径先解除输出回调再关闭，避免继续向坏连接发布。interface 不自行调用组件或产品 Shutdown。
+这只是当前产品的退出策略；其他产品可以根据返回原因选择继续运行，解绑旧发布回调后再接入新连接。
 
 ## 线协议
 

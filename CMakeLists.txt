@@ -32,14 +32,17 @@ include(cmake/RoboframeComponents.cmake)
 roboframe_load_components()
 
 add_library(roboframe_integration
-    integration/robot_integration.cpp integration/data_flow.cpp
-    integration/mapping_flow.cpp integration/pose_buffer.cpp integration/sensor_flow.cpp)
+    integration/robot_integration.cpp
+    integration/workflow/mapping.cpp
+    integration/data_flow/sensor_flow.cpp
+    integration/data_flow/pose_buffer.cpp
+    integration/data_flow/result_dispatch.cpp)
 target_include_directories(roboframe_integration PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(roboframe_integration PUBLIC Roboframe::sdk
     PRIVATE Odom::component LidarMap::component MapUpdater::component MapServer::component Planner::component)
 add_library(roboframe_stdio interface/stdio_interface.cpp interface/stdio_channel.cpp)
 target_include_directories(roboframe_stdio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(roboframe_stdio PRIVATE roboframe_integration)
+target_link_libraries(roboframe_stdio PUBLIC Roboframe::sdk)
 add_executable(robot_runtime main.cpp)
 target_link_libraries(robot_runtime PRIVATE roboframe_stdio roboframe_integration)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -49,6 +52,13 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_executable(interface_binding_test tests/interface_binding_test.cpp)
+    target_link_libraries(interface_binding_test PRIVATE roboframe_stdio)
+    add_test(NAME interface_binding_test COMMAND interface_binding_test)
+    set_tests_properties(interface_binding_test PROPERTIES TIMEOUT 10)
+    add_executable(sensor_flow_test tests/sensor_flow_test.cpp)
+    target_link_libraries(sensor_flow_test PRIVATE roboframe_integration Odom::component LidarMap::component)
+    add_test(NAME sensor_flow_test COMMAND sensor_flow_test)
     add_executable(concurrent_ingress_test tests/concurrent_ingress_test.cpp)
     target_link_libraries(concurrent_ingress_test PRIVATE roboframe_integration)
     add_test(NAME concurrent_ingress_test COMMAND concurrent_ingress_test)

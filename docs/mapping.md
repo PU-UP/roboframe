@@ -23,9 +23,9 @@ flowchart LR
 | integration/robot_integration.hpp | 产品公开接口，仅依赖 SDK |
 | integration/robot_integration_impl.hpp | 私有组件所有权、接线和建图会话状态 |
 | integration/robot_integration.cpp | 构造、兼容性检查、启停 |
-| integration/data_flow.cpp | 转发数据、等待同步、提交有界地图计算、收取结果 |
-| integration/pose_buffer.hpp | integration 私有缓存工具，没有组件生命周期 |
-| integration/mapping_flow.cpp | StartMapping、FinishMapping、CancelMapping、地图操作 |
+| integration/data_flow/sensor_flow.*、result_dispatch.cpp | 前者配对数据并提交计算；后者收取结果、分发和发布 |
+| integration/data_flow/pose_buffer.hpp | integration 私有缓存工具，没有组件生命周期 |
+| integration/workflow/mapping.cpp | StartMapping、FinishMapping、CancelMapping、地图操作 |
 | components/odom/include/odom/passthrough_odom_component.hpp | 透传位姿操作契约与组件；数据类型在 SDK |
 | components/map-updater/include/map_updater/occupancy_map_component.hpp | 更新结果、组件输入策略和占据图组件 |
 | components/map-server/include/map_server/file_map_component.hpp | 地图保存和读取组件 |

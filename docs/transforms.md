@@ -12,7 +12,7 @@ odom→map 对应 T_map_odom；组合为 `T_map_base = T_map_odom * T_odom_base`
 | SDK | TimedPose2D 只表示 T_odom_base；MapPose2D 表示 T_map_base；MapCorrection2D 表示 T_map_odom；ScanTransforms2D 携带完整两级链 | sdk/include/roboframe/geometry2d.hpp、transforms2d.hpp |
 | odom | 接收已有 raw odom，校验后同步原样发布 T_odom_base | components/odom/include/odom/passthrough_odom_component.hpp |
 | lidar-map | 同时接收只读 scan 与同采集时刻的 odom；有录制参考 pose 的帧才发布 T_map_odom | components/lidar-map/include/lidar_map/recorded_lidar_map_component.hpp |
-| integration | 缓存/插值 odom，分发同一 scan，保留最近已发布的有效校正，向 mapper 交付 ScanTransforms2D | integration/data_flow.cpp、pose_buffer.hpp |
+| integration | 缓存/插值 odom，分发同一 scan，保留最近已发布的有效校正，向 mapper 交付 ScanTransforms2D | integration/data_flow/sensor_flow.cpp、pose_buffer.hpp |
 | map-updater | 用完整 TF 投影 scan，更新导航占据图；不估计定位、不依赖 lidar-map 的私有类型 | components/map-updater/include/map_updater/occupancy_map_component.hpp |
 | map-server / planner | 保存有坐标归属的快照 / 有界异步读取共享地图与 scan | 对应具名 component 头文件 |
 | interface | SDK 输入的 IPC 适配，不做 TF 计算 | interface/stdio_interface.cpp |

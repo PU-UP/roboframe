@@ -1,8 +1,7 @@
 #include "interface/stdio_interface.hpp"
-#include "integration/robot_integration.hpp"
 #include <roboframe/mapping.hpp>
 #include <roboframe/scan2d.hpp>
-#include <iostream>
+#include <utility>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -10,6 +9,12 @@
 
 namespace roboframe {
 namespace {
+template<class F, class... Args>
+auto Invoke(const char* name, const F& handler, Args&&... args)
+    -> decltype(handler(std::forward<Args>(args)...)) {
+    if (!handler) throw std::logic_error(std::string("unsupported: ") + name);
+    return handler(std::forward<Args>(args)...);
+}
 std::uint64_t Unsigned(std::istream& input, std::uint64_t maximum = std::numeric_limits<std::int64_t>::max()) {
     std::string token;
     if (!(input >> token) || token.empty() || token.size() > 20 ||
@@ -38,8 +43,8 @@ const char* MappingPhaseName(MappingPhase phase) {
     return "unknown";
 }
 }
-StdioInterface::StdioInterface(int input, int output, RobotIntegration& integration)
-    : channel_(input, output), integration_(integration) {}
+StdioInterface::StdioInterface(int input, int output, ProductInputs inputs)
+    : channel_(input, output), inputs_(std::move(inputs)) { channel_.Queue("READY roboframe-v3"); }
 void StdioInterface::Send(const std::string& message) {
     if (request_id_) channel_.Queue("RES " + std::to_string(request_id_) + " " + message);
 }
@@ -95,12 +100,12 @@ ProductOutputs StdioInterface::Outputs() {
     return output;
 }
 std::string StdioInterface::Status() const {
-    const auto& s = integration_.mapping_status();
-    const auto map = integration_.map();
+    const auto report = Invoke("STATUS", inputs_.mapping.status);
+    const auto& s = report.status;
     std::ostringstream out;
     out << "STATUS " << MappingPhaseName(s.phase) << ' ' << s.session << ' ' << s.received << ' '
-        << s.integrated << ' ' << s.ignored << ' ' << s.dropped << ' ' << integration_.pending()
-        << ' ' << s.used_rays << ' ' << s.outside_rays << ' ' << (map ? map->revision : 0)
+        << s.integrated << ' ' << s.ignored << ' ' << s.dropped << ' ' << report.pending
+        << ' ' << s.used_rays << ' ' << s.outside_rays << ' ' << report.map_revision
         << ' ' << s.drop_sync << ' ' << s.drop_queue << ' ' << s.drop_bounds << ' ' << s.drop_cancel;
     return out.str();
 }
@@ -121,7 +126,7 @@ bool StdioInterface::Dispatch(const std::string& line) {
     if (command == "GET_MAP") {
         std::string role; input >> role; End(input);
         if (role != "live" && role != "baseline") throw std::invalid_argument("expected live or baseline");
-        const auto view = integration_.map_view(role == "baseline");
+        const auto view = Invoke("GET_MAP", inputs_.maps.view, role == "baseline");
         if (!view.grid) throw std::logic_error("map unavailable");
         std::string response = "MAP " + role + " " + MapText(view) + " ";
         response.reserve(response.size() + 2 * view.grid->cells.size());
@@ -134,13 +139,12 @@ bool StdioInterface::Dispatch(const std::string& line) {
     }
     if (command == "QUIT") {
         End(input);
-        integration_.Shutdown();
-        Send("BYE");
+        quit_ = true;
         return false;
     }
     if (command == "TF") {
         End(input);
-        const auto state = integration_.transforms();
+        const auto state = Invoke("TF", inputs_.diagnostics.transforms);
         if (!state.valid) { Send("TF unavailable"); return true; }
         const auto& tf = state.transforms;
         const auto global = MapFromBase(tf);
@@ -153,7 +157,7 @@ bool StdioInterface::Dispatch(const std::string& line) {
     }
     if (command == "RESOURCES") {
         End(input);
-        const auto s = integration_.data_flow_status();
+        const auto s = Invoke("RESOURCES", inputs_.diagnostics.resources);
         std::ostringstream out;
         out << "RESOURCES";
         out << " compute_pending=" << s.compute_pending << " compute_active=" << s.compute_active
@@ -196,12 +200,12 @@ bool StdioInterface::Dispatch(const std::string& line) {
             options.max_correction_age_us = static_cast<std::int64_t>(Unsigned(input, 60000000));
         }
         End(input);
-        integration_.Configure(options);
+        Invoke("CONFIG", inputs_.mapping.configure, options);
     } else {
         if (command == "BEGIN") {
             const auto id = Unsigned(input);
             End(input);
-            integration_.StartMapping(id);
+            Invoke("BEGIN", inputs_.mapping.start, id);
         } else if (command == "ODOM") {
             TimedPose2D pose;
             pose.stamp_us = static_cast<std::int64_t>(Unsigned(input));
@@ -209,13 +213,13 @@ bool StdioInterface::Dispatch(const std::string& line) {
             pose.pose.y = Number(input);
             pose.pose.yaw = Number(input);
             End(input);
-            integration_.PushOdometry(pose);
+            Invoke("ODOM", inputs_.sensors.odometry, pose);
         } else if (command == "MAP_POSE") {
             MapPose2D pose;
             pose.stamp_us = static_cast<std::int64_t>(Unsigned(input));
             pose.pose.x = Number(input); pose.pose.y = Number(input); pose.pose.yaw = Number(input);
             End(input);
-            integration_.PushMapReference(pose);
+            Invoke("MAP_POSE", inputs_.sensors.map_reference, pose);
         } else if (command == "SCAN") {
             auto scan = std::make_shared<roboframe::Scan2D>();
             scan->stamp_us = static_cast<std::int64_t>(Unsigned(input));
@@ -226,60 +230,56 @@ bool StdioInterface::Dispatch(const std::string& line) {
                 scan->hits.push_back({x, y});
             }
             End(input);
-            integration_.PushScan(std::move(scan));
+            Invoke("SCAN", inputs_.sensors.scan, Scan2DPtr(std::move(scan)));
         } else if (command == "SAVE" || command == "SNAPSHOT" || command == "LOAD") {
             std::string name;
             if (!(input >> name)) throw std::invalid_argument("expected map name");
             End(input);
-            if (command == "SAVE") integration_.SaveMap(name);
-            else if (command == "LOAD") integration_.LoadMap(name);
-            else integration_.SnapshotMap(name);
+            if (command == "SAVE") Invoke("SAVE", inputs_.maps.save, name);
+            else if (command == "LOAD") Invoke("LOAD", inputs_.maps.load, name);
+            else Invoke("SNAPSHOT", inputs_.maps.snapshot, name);
         } else {
             End(input);
-            if (command == "FINISH") { integration_.FinishMapping(); Send("ACCEPTED FINISH"); return true; }
-            else if (command == "CANCEL") integration_.CancelMapping();
+            if (command == "FINISH") { Invoke("FINISH", inputs_.mapping.finish); Send("ACCEPTED FINISH"); return true; }
+            else if (command == "CANCEL") Invoke("CANCEL", inputs_.mapping.cancel);
             else if (command == "STATUS") { Send(Status()); return true; }
-            else if (command == "WAIT_PLANNER") integration_.WaitPlanner();
+            else if (command == "WAIT_PLANNER") Invoke("WAIT_PLANNER", inputs_.diagnostics.check_readers_idle);
             else throw std::invalid_argument("unknown command");
         }
     }
     Send("OK " + command);
     return true;
 }
-void StdioInterface::Run() {
-    channel_.Queue("READY roboframe-v3");
+StdioInterface::ReceiveResult StdioInterface::ProcessNext(const std::function<void()>& service) {
+    request_id_ = 0;
+    std::string line;
     try {
-        std::string line;
-        while (channel_.NextLine(line, [this] { request_id_ = 0; integration_.Poll(); })) {
-            request_id_ = 0;
-            try {
-                if (line.size() > 65536) throw std::invalid_argument("line exceeds 65536 bytes");
-                std::istringstream envelope(line);
-                std::string kind; envelope >> kind;
-                if (kind == "REQ") {
-                    const auto id = Unsigned(envelope);
-                    if (!id || id <= last_request_id_) throw std::invalid_argument("request id must increase");
-                    request_id_ = last_request_id_ = id;
-                } else if (kind != "DATA") throw std::invalid_argument("expected REQ id or DATA");
-                std::string command; std::getline(envelope, command);
-                if (!Dispatch(command)) break;
-            } catch (const std::bad_alloc&) { throw; }
-            catch (const std::exception& error) {
-                if (request_id_) Send(std::string("ERROR ") + error.what());
-                else channel_.Queue(std::string("RES 0 ERROR ") + error.what());
-            }
-        }
-        request_id_ = 0;
-        integration_.Shutdown();
-        channel_.Drain();
-    } catch (const std::invalid_argument& error) {
-        request_id_ = 0;
+        if (!channel_.NextLine(line, service)) return ReceiveResult::end_of_input;
+    } catch (const StdioChannel::InputError& error) {
         channel_.Queue(std::string("RES 0 ERROR ") + error.what());
-        integration_.Shutdown(); channel_.Drain();
-    } catch (...) {
-        integration_.SetOutputs({});
-        integration_.Shutdown();
-        throw;
+        return ReceiveResult::invalid_input;
     }
+    try {
+        if (line.size() > 65536) throw std::invalid_argument("line exceeds 65536 bytes");
+        std::istringstream envelope(line);
+        std::string kind; envelope >> kind;
+        if (kind == "REQ") {
+            const auto id = Unsigned(envelope);
+            if (!id || id <= last_request_id_) throw std::invalid_argument("request id must increase");
+            request_id_ = last_request_id_ = id;
+        } else if (kind != "DATA") throw std::invalid_argument("expected REQ id or DATA");
+        std::string command; std::getline(envelope, command);
+        return Dispatch(command) ? ReceiveResult::received : ReceiveResult::quit;
+    } catch (const std::bad_alloc&) { throw; }
+    catch (const std::exception& error) {
+        if (request_id_) Send(std::string("ERROR ") + error.what());
+        else channel_.Queue(std::string("RES 0 ERROR ") + error.what());
+    }
+    return ReceiveResult::received;
+}
+void StdioInterface::Finish() {
+    if (quit_) Send("BYE");
+    request_id_ = 0;
+    channel_.Drain();
 }
 } // namespace roboframe
