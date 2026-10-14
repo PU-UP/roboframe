@@ -1,9 +1,10 @@
-#include "integration/robot_integration.hpp"
+#include "products/demo_robot/demo_robot_integration.hpp"
 #include <atomic>
 #include <thread>
 #include <stdexcept>
 #include <unistd.h>
 using namespace roboframe;
+using namespace demo_robot;
 using Clock = std::chrono::steady_clock;
 void Check(bool ok) { if (!ok) throw std::runtime_error("concurrent ingress failed"); }
 template<class F> void Until(F done) {
@@ -13,14 +14,14 @@ template<class F> void Until(F done) {
 int main() {
     char directory[] = "/tmp/roboframe-ingress-XXXXXX";
     Check(::mkdtemp(directory) != nullptr);
-    RobotIntegration robot(directory, std::chrono::milliseconds(5000));
+    DemoRobotIntegration robot(directory, std::chrono::milliseconds(5000));
     robot.Configure({{20, 20, 1, -5, -5}, 100});
     const auto owner = std::this_thread::get_id();
     std::int64_t latest_odom = -1;
-    ProductOutputs output;
+    DemoRobotOutputs output;
     output.odometry = [&](const TimedPose2D& pose) { Check(std::this_thread::get_id() == owner); latest_odom = pose.stamp_us; };
     output.mapping = [&](const MappingEvent&) { Check(std::this_thread::get_id() == owner); };
-    robot.SetOutputs(output); robot.StartMapping(1);
+    robot.SetOutputs(output); robot.Start(); robot.StartMapping(1);
     robot.PushOdometry({0, {}}); robot.PushScan(std::make_shared<const Scan2D>(Scan2D{0, {{2, 0}}}));
     Until([&] { return robot.data_flow_status().compute_active == 1; });
     std::atomic<int> odoms{0}, scans{0}, closed{0};

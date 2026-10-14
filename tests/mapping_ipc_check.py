@@ -14,7 +14,7 @@ class MappingIPC(unittest.TestCase):
         import stdio_publication_test as ipc
         ipc.BINARY = BINARY
         host = ipc.Session(directory)
-        lines = ['READY roboframe-v3']
+        lines = ['READY roboframe-v4']
         try:
             for command in commands.splitlines(keepends=True):
                 if not command.endswith('\n'):
@@ -24,6 +24,8 @@ class MappingIPC(unittest.TestCase):
                 body = command.strip()
                 response = host.req(body)
                 lines.append(response)
+                if body.startswith('CONFIG ') and response == 'OK CONFIG':
+                    self.assertEqual(host.req('RUN'), 'OK RUN')
                 if body == 'QUIT': break
                 if body.split()[0] in ('ODOM', 'SCAN') and not response.startswith('ERROR'):
                     host.wait_compute()
@@ -49,7 +51,7 @@ class MappingIPC(unittest.TestCase):
             self.assertIn('STATUS ready 1 1 1 0 0 0 1 0 1 0 0 0 0', lines)
             final = (pathlib.Path(directory) / 'final.rfgrid').read_bytes()
             self.assertEqual(final, (pathlib.Path(directory) / 'frozen.rfgrid').read_bytes())
-            lines = self.run_session(CONFIG + 'LOAD final\nSAVE reloaded\nQUIT\n', directory)
+            lines = self.run_session(CONFIG + 'STOP\nLOAD final\nSAVE reloaded\nQUIT\n', directory)
             self.assertIn('OK LOAD', lines)
             self.assertEqual(final, (pathlib.Path(directory) / 'reloaded.rfgrid').read_bytes())
 
@@ -73,7 +75,7 @@ class MappingIPC(unittest.TestCase):
             self.assertEqual(lines.count('OK CONFIG'), 1)
             self.assertIn('STATUS mapping 1 0 0 0 0 0 0 0 0 0 0 0 0', lines)
             self.assertEqual(list(pathlib.Path(directory).iterdir()), [])
-            self.assertEqual(self.run_session('QUIT\n', directory), ['READY roboframe-v3', 'BYE'])
+            self.assertEqual(self.run_session('QUIT\n', directory), ['READY roboframe-v4', 'BYE'])
 
     def test_live_map_preserves_baseline(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -103,7 +105,7 @@ class MappingIPC(unittest.TestCase):
                 'FINISH\nSAVE mapped\nRESOURCES\n'
                 'BEGIN 2\nODOM 50 6 0 0\nSCAN 50 1 2 0\nTF\nCANCEL\nQUIT\n', directory)
             self.assertFalse(any(line.startswith('ERROR') for line in lines))
-            self.assertEqual(lines.count('TF unavailable'), 3)  # Initial, expired, and new session.
+            self.assertEqual(lines.count('TF unavailable'), 2)  # Initial and expired; BEGIN preserves localization.
             self.assertIn('TF 10 10 2 0 0 3 0 0 5 0 0', lines)
             self.assertIn('TF 20 10 3 0 0 3 0 0 6 0 0', lines)  # Old correction, current odom.
             self.assertIn('TF 40 40 5 0 0 2 0 0 7 0 0', lines)
@@ -112,10 +114,10 @@ class MappingIPC(unittest.TestCase):
             self.assertIn('tf_dropped=2', resources)
             file = pathlib.Path(directory) / 'mapped.rfgrid'
             self.assertTrue(file.read_bytes().startswith(b'RFGRID2\n'))
-            lines = self.run_session(config + 'LOAD mapped\nTF\nSAVE copy\nQUIT\n', directory)
+            lines = self.run_session(config + 'STOP\nLOAD mapped\nTF\nSAVE copy\nQUIT\n', directory)
             self.assertIn('TF unavailable', lines)  # Loading a map is not localization.
             self.assertEqual(file.read_bytes(), (pathlib.Path(directory)/'copy.rfgrid').read_bytes())
-            lines = self.run_session(CONFIG + 'LOAD mapped\nQUIT\n', directory)
+            lines = self.run_session(CONFIG + 'STOP\nLOAD mapped\nQUIT\n', directory)
             self.assertTrue(any('frame differs' in line for line in lines))
             lines = self.run_session(config + 'BEGIN 1\nMAP_POSE 10 0 0 0 extra\n'
                                     'MAP_POSE 10 nan 0 0\nQUIT\n', directory)

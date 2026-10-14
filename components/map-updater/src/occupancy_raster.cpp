@@ -19,7 +19,7 @@ OccupancyRaster::OccupancyRaster(roboframe::GridSpec spec) : spec_(spec) {
     current_.cells = roboframe::GridCells(evidence_.size());
 }
 void OccupancyRaster::Reset() {
-    if (lifecycle_ != roboframe::Lifecycle::active) throw std::logic_error("grid inactive");
+    // Reset is valid while inactive; the owner must first quiesce computation.
     std::fill(evidence_.begin(), evidence_.end(), 0);
     std::fill(observations_.begin(), observations_.end(), 0); touched_.clear();
     revision_ = 0;

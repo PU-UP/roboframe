@@ -16,7 +16,7 @@ globalThis.BuildCatalog = {
       implemented: true, package: "MapServer", target: "MapServer::component", sourcePath: "components/map-server" },
   ],
   scenarios: [
-    { id: "current", name: "当前产品", integration: "RobotIntegration", buildReady: true,
+    { id: "current", product: "demo_robot", name: "Demo robot", integration: "DemoRobotIntegration", buildReady: true,
       components: ["odom", "slam", "posegraph", "localmapbuilder", "map-updater", "map-server"], defaults: ["SOURCE", "SOURCE", "SOURCE", "SOURCE", "SOURCE", "SOURCE"] }
   ],
   platforms: [

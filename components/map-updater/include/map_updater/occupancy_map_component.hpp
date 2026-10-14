@@ -1,7 +1,7 @@
 #pragma once
-#include <roboframe/component.hpp>
-#include <roboframe/submap2d.hpp>
-#include <roboframe/grid.hpp>
+#include <roboframe/core/component.hpp>
+#include <roboframe/datatype/submap2d.hpp>
+#include <roboframe/datatype/grid.hpp>
 #include <map_updater/version.hpp>
 #include <functional>
 #include <map>
@@ -19,7 +19,7 @@ public:
     void Activate() override;
     void Deactivate() override;
     roboframe::Lifecycle lifecycle() const override { return lifecycle_; }
-    void Reset();
+    void Reset(); // Exclusive owner; valid when active or inactive.
     Update PushSubmap(roboframe::Submap2DPtr submap, const roboframe::PoseNode2D& anchor,
                       const std::function<bool()>& canceled = {});
     void UpdateNode(const roboframe::PoseNode2D& node, const std::function<bool()>& canceled = {});

@@ -1,7 +1,7 @@
-#include <roboframe/component.hpp>
-#include <roboframe/log.hpp>
-#include <roboframe/task.hpp>
-#include <roboframe/version.hpp>
+#include <roboframe/core/component.hpp>
+#include <roboframe/core/log.hpp>
+#include <roboframe/core/task.hpp>
+#include <roboframe/core/version.hpp>
 #include <stdexcept>
 #include <thread>
 

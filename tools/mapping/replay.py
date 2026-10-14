@@ -185,7 +185,7 @@ class Host:
         self.reader = threading.Thread(target=self._read, name='roboframe-output')
         self.reader.start()
         try:
-            if self.receive() != 'READY roboframe-v3':
+            if self.receive() != 'READY roboframe-v4':
                 raise RuntimeError('mapping host not ready')
             self.send('SUBSCRIBE ON')
         except Exception:
@@ -387,6 +387,7 @@ def run(args):
 
     try:
         host.send(config)
+        host.send('RUN')
         host.send('BEGIN 1')
         print(f'MODULES READY; BEGIN; replay {count} scans, finish after {finish}', flush=True)
         for record in records:
@@ -472,7 +473,7 @@ def run(args):
         host.close()
 
     if not all(host.event_counts[key] for key in ['ODOM', 'MAP', 'TF', 'mapping_started',
-                                                  'mapping_finished', 'mapping_saved', 'mapping_stopped']):
+                                                  'mapping_finished', 'mapping_saved', 'RUNTIME']):
         raise RuntimeError('missing unsolicited output')
     if use_tf and not host.event_counts['CORRECTION']:
         raise RuntimeError('missing global correction output')

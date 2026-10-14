@@ -61,17 +61,13 @@ python3 tests/intel_reference_check.py build-product/corrected-reference/live.rf
 
 当前接入独立 SLAM、PoseGraph、LocalMapBuilder 与完整 TF：raw odom 与 corrected pose 分开输入，地图显式标记 map 坐标。
 `--dataset corrected` 回放匹配的 910 帧，`--dataset tf` 回放全部原始扫描并稀疏校正；两者通过 SLAM 输出修正 pose，由 PoseGraph 计算 T_map_odom。
-具体运行、时间有效性和 RFGRID2 兼容说明见 [TF 数据链路](../../docs/transforms.md)。
-下面保留的是前一轮参考地图验收数值；旧输出 RFGRID1 没有 map 标签，后续应重新生成，不能混用原始 odom 坐标。
+具体运行、时间有效性和 RFGRID2 兼容说明见 [TF 数据链路](../../docs/mapping.md)。
 
-本次输出：
-- `final.rfgrid`：前 909 帧固定结果；`live.rfgrid`：包含全部 910 帧，建议后续规划测试读取这一份。
-- `live.png`：原始占据图，686 × 689、0.1 m/格、原点 (-31, -44) 米；PNG 顶部为 +y，存储栅格 y 向上。
-- 栅格字节为 occupied=0、free=254、unknown=205；不是 ROS OccupancyGrid 的 -1/0/100。
-- 尚未膨胀。planner 应使用自己的代价/膨胀层，不能修改共享原始地图；未知区域默认不可通行。
-- `connectivity.json` 是离线验收：假设机器人半宽 0.2 m，保守保留 3 格间隔，未知与占据均阻挡。
-  四邻接连通性检查找到 20,039 个可达格和 46.5 m 的示例格路径，不是运行时 planner 的输出或实机安全保证。
-  同坐标系示例起点 (0.65, -0.05)、终点 (-1.75, -20.35)，均取格中心。
+规划使用前应重新生成当前格式的地图，不直接使用旧 build 产物：
+- live.rfgrid 包含回放末尾的实时地图；final.rfgrid 是 FINISH 边界的冻结结果。
+- 栅格字节 occupied=0、free=254、unknown=205，不是 ROS 的 -1/0/100。
+- 存储栅格 y 向上，PNG 顶部为 +y；起点和目标必须与地图坐标系一致。
+- 原图尚未膨胀；未来 planner 应维护自己的代价层，不能修改共享原图。
+- intel_reference_check.py 只做离线连通性检查，不是运行时 planner 或实机安全验证。
 
-建议下一步固定这份地图，先实现 planner 的请求/取消/结果，再由 navigation 编排；
-定位可先明确使用录制参考位姿输入。BT 在这些可单独测试的能力之上调度，之后再接在线 SLAM/重定位。
+当前优先级统一见 [TODO](../../TODO.md)，不在数据文档另设开发路线。

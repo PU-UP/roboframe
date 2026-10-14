@@ -1,125 +1,113 @@
-# Roboframe SDK 7.0
-interface、integration、component 共用的公开契约和小型基础设施。
-SDK 位于主目录的 sdk/，与 interfaces/、products/、components/ 并列；
-后两种复数目录是未来多产品布局，当前不为占位而搬动目录或创建空产品。
+# Roboframe SDK 10.0
 
-## 类型归属与依赖边界
-**跨 interface 与 integration 边界的自定义数据类型必须由 SDK 定义。**
-这包括输入数据、请求参数、对外状态和结果；基础数值、字符串直接使用标准类型，
-不为每个字段另造包装类。ROS/DDS 等原生消息属于传输适配层，转换后才进入 integration。
-SDK 的 C++ 对象不是线协议，不能直接把对象内存作为 IPC 数据发送。
+SDK 只维护跨产品的运行机制与数据语义，不收集每个产品的协议、配置和诊断。
+interface、integration、component 按需引用同一个 SDK；各产品可以固定不同发布版本。
 
-| 内容 | 所属位置 |
+## 目录与依赖
+
+~~~text
+sdk/
+├─ include/roboframe/
+│  ├─ core/
+│  │  ├─ integration.hpp     Start/Stop/Reset、代次与完成结果交接
+│  │  ├─ input_gate.hpp      输入开关、短临界区及接纳时的运行代次
+│  │  ├─ execution.hpp       有界队列、过载、协作取消
+│  │  └─ component/lifecycle/task/log/runtime/version.hpp
+│  └─ datatype/
+│     ├─ geometry2d.hpp / transforms2d.hpp
+│     ├─ scan2d.hpp / submap2d.hpp
+│     └─ grid.hpp / grid_cells.hpp
+└─ templates/integration/
+   ├─ product_integration.hpp   可编译参考模板，不是新基类
+   ├─ check.cpp
+   └─ CMakeLists.txt
+~~~
+
+core 只依赖 core，datatype 只依赖 datatype；两者都不得包含产品、组件或传输实现。
+sdk/tests/header_layers_test.py 自动检查，安装头文件也独立编译。
+生成的 sdk_version.hpp 只是版本常量。没有总头文件，不创建通用消息总线。
+
+## 公开契约放在哪里
+
+| 内容 | 归属 |
 |---|---|
-| 时间、坐标、Scan2D、GridSnapshot 等稳定数据 | SDK 对应领域头文件 |
-| 建图公开配置、状态 | SDK mapping.hpp；不含建图流程实现 |
-| 产品独有且需要跨 interface 的请求/结果 | 确有需要时放 SDK products/<product>/，不污染通用类型 |
-| 组件独有配置、局部更新结果、诊断与算法参数 | 具名组件头文件；只有需独立复用时才拆组件契约头 |
-| 跨组件接线、缓存与时间匹配、业务流程和未公开的产品状态 | integration；算法内部同步与融合留在 component |
-| 传输解析、协议编码和传输资源 | interface |
+| 跨产品的位姿、图像、地图等数据与必要能力语义 | SDK datatype，按实际需求添加 |
+| 某组件的专有参数、输入/结果 | 组件具名公开头；不是私有实现 |
+| 产品请求、业务配置、统计汇总 | 产品的公开 contract 目录 |
+| 算法状态与内部融合 | 组件内部 |
+| 组件选择、连接、跨组件对时、任务编排 | 产品 integration |
 
-integration 装配具体组件，所以其实现依赖组件的公开接口是正常的；
-interface 不依赖组件数据类型或头文件。integration 公开入口只引用 SDK；
-具体组件和 PoseBuffer 在私有 robot_integration_impl.hpp 中，CMake 组件依赖为 PRIVATE。
-main 拥有 integration，通过 inputs.hpp 具名回调把产品入口交给 StdioInterface；interface 只链接 SDK。
-这些回调按当前协议的传感器/建图/地图操作/诊断分组，不是所有机器人的统一能力清单。
-未绑定入口表示产品不支持；后续新增能力按领域或产品扩展，不往单个请求里塞可选字段或 any。
-输入绑定不拥有产品、不创建线程；产品须活到 interface 销毁之后，业务请求只能在业务 owner 执行。
-SDK 不提供 Poll/Shutdown 运行回调：产品主入口安排推进和关闭，传输层不决定业务生命周期。
+**interface 可见的自定义类型必须来自公开契约，但不必全部来自 SDK。**
+数据语义相同，interface、integration、component 可以直接使用同一类型，不按层强制转换。
+算法组件可以使用公共能力请求/结果；产品的“开始任务”与算法的“处理数据”语义不同时，
+integration 仍需要执行编排，不能为了省转换把整个产品流程交给组件。
 
-组件封装与组合遵循 [主文档架构原则](../README.md#架构原则能力封装与按需组合)：
-SDK 统一必要的输出数据语义，不据此要求所有算法采用同一种输入或统一能力基类。
-产品提出频率与延迟要求；满足这些要求所需的内部传播、融合由具体组件负责。
+demo_robot 的公开声明位于 products/demo_robot/contract/include/demo_robot，使用 demo_robot 命名空间，
+通过 DemoRobot::contract 显式提供。通用 component 默认只链接 SDK，无法自动获得产品头路径。
+产品定制 component 可以显式依赖该契约，但会成为产品相关组件；多产品共享的能力契约应独立提炼。
+产品契约不包含 integration 类或具体组件，协议适配仅依赖 SDK + 契约。
 
 ## SDK 准入规则
-1. 新类型必须有实际的公开边界或独立消费者；不按未来模块清单预建类型。
-2. 先判断它是通用数据、领域 API 还是产品专有 API；不能因为进入 SDK 就宣称跨产品通用。
-   产品专有契约按产品隔离；私有业务流程不进入 SDK。
-3. 优先复用已有语义一致的类型。不能用可选字段不断堆出万能消息，也不引入 any/AddData。
-4. 每个小头文件按需引用并能独立编译。基础类型不反向依赖领域或产品类型，
-   领域类型不依赖产品类型；整个 SDK 不包含 component、integration、ROS 或 DDS 实现。
-5. 契约必须说明单位、坐标系、时钟、所有权和有效性。操作接口还需说明异常、回调和并发要求。
-   SDK 检查结构有效性；传输和消费者另外限制容量、频率、范围等资源策略。
-6. 新增或修改公开契约需同时核对生产者、消费者、安装导出与兼容性；
-   未使用的公开类型先走弃用与版本流程，不随意删改。
-   这些规则是代码评审约束，当前没有新增自动架构检查工具。
 
-| 头文件 | 职责 |
-|---|---|
-| component.hpp / lifecycle.hpp | Activate、Deactivate、生命周期 |
-| execution.hpp | 可选 typed 有界执行通道、过载、取消、结果与异常交付；不包含算法/产品类型 |
-| task.hpp | 可选任务状态和 ID，不管理线程或产品流程 |
-| geometry2d.hpp | 微秒时间戳、米/弧度、T_odom_base |
-| scan2d.hpp | base_link 下只读二维命中点；不代表所有原始雷达消息 |
-| grid.hpp / grid_cells.hpp | 显式 odom/map 系二维栅格、4 KiB 分块写时复制、只读快照 |
-| data_flow.hpp | 产品对外的数据共享资源统计 |
-| inputs.hpp | 具名输入与请求绑定、MappingReport；不依赖具体 integration，不管理线程 |
-| outputs.hpp | 产品具名输出、建图事件、进程内地图上下文；不含传输或事件总线 |
-| mapping.hpp | 可选建图公开参数与状态，不规定产品工作流 |
-| log.hpp | ROBO_LOG_INFO 等日志，默认 stderr，可替换 sink |
-| version.hpp | SDK 兼容核对与组件源码标识，不保证二进制 ABI |
+1. 有真实生产者/消费者；不根据未来模块清单预建类型或空接口。
+2. core 不包含算法/产品概念。datatype 说明单位、时钟、坐标、有效性与所有权，不携带产品开关。
+3. 私有类型先留组件/产品；需要公开不等于必须进入 SDK。不得追加 products/<name> 协议树到 SDK。
+4. 共享语义一致才复用类型，不把不同任务/算法状态塞进一个万能结构。
+5. 大数据用不可变共享引用；写入建立自己的工作区或采用已有写时复制。不得维护第二套产品专属 worker。
+6. 公开头独立编译；变更同步核对调用方、配置、安装导出和兼容性。
+7. 每个新类型说明实际消费者与维护归属，单个产品的字段不自动升级成全框架标准。
 
-Scan2D 发布后生产者不得通过其他可写别名修改数据；消费者可以保留只读共享指针。
-20 米与 2048 点限制属于当前地图更新组件的输入策略，不是所有 SDK 消费者的限制。
-现有 GridSpec 校验仍混有资源上限，已记入待办，不在本次扩大重构。
+GridSpec 的现有结构校验仍混有资源上限，已记录 TODO；datatype 名称不代表所有数值策略已通用。
+图像、IMU、3D 位姿等待真实接入需求，不在此创建占位。
 
-SDK 不强制 Integration 基类或通用 AddData。无真实配置的组件不设空 Config。
-integration 的 typed 传感器入口可并发调用；业务状态由业务 owner 有序管理。地图计算和测试读取器 复用 ExecutionChannel，只有需要独立执行的通路才使用它。各组件头文件声明并发、回调和异常语义。
-日志 sink 不重入日志 API；其异常被日志层吞掉。日志及测试读取器 的跨线程入口有同步；SDK 类型不自动保证所有可变对象的线程安全。
-组件 tests 下的 main 可脱离框架运行，不维护两套相同示例。
+## 输入、计算与结果
 
-## 版本与交付
-版本维护只有两个入口：
-- SDK 维护者修改 sdk/VERSION，发布并标记兼容性；同 major 的后续版本必须兼容之前版本。
-- 产品维护者在 cmake/Dependencies.cmake 选择 SDK 的精确版本和组件清单。
+InputGate 的 Lock 返回短期 Access；锁内可检查 open、取得 generation、提交有界工作。
+Close 等待当前接纳操作退出，阻止后续接纳；随后 Integration 才失效执行组并等待协作退出。
+Lock 也可用于读取同一入口的轻量状态。禁止锁内等待计算、回调重入 gate 或执行重算法。
+Open/Close 由控制 owner 管理，generation 来自 Integration；跨产品不能复制一份自写开关。
+它不是队列、时间匹配器或算法锁，不能自动管理组件自己的后台线程。
 
-component 开发者不维护 SDK 版本、组件发布数字或独立 contract_version。
-独立开发时通过 CMAKE_PREFIX_PATH 或 RoboframeSDK_DIR 使用产品指定的 SDK；
-根目录构建会检查源码 SDK 或安装包是否与产品选择一致。
+ExecutionChannel 管排队/计算/完成的总容量；Integration::Dispatch 在控制 owner 收取并过滤旧代次结果。
+算法自己的线程/回调需要其自身的关闭与结果代次约定。运行命令、Poll 和输出回调在控制 owner，
+传感器生产者通过并发入口投递。新组件并不必然新建线程。
 
-SDK 2.0 已移除独立契约版本；SDK 3.0 将 Grid::cells 改为分块写时复制，
-Scan2D 改为只能移动而不能复制。SDK 4.0 增加明确的 TF 数据结构、GridSpec.frame 和 mapper 完整变换入参。
-这些 major 版本的公开接口变化要求旧组件开发包重建。SDK 4.1 仅新增 outputs.hpp，未修改现有组件数据布局。
-SDK 7.0 包含 submap2d.hpp 节点/子图语义与新的资源布局。MapUpdater 改为子图输入，旧 major 包必须重建；组件源码身份和编译 SDK 仍由构建自动记录。
-组件的编译 SDK 仍自动记录，无需组件开发者维护额外版本字段。
-Scan2DPtr 和 GridSnapshot 跨模块只读共享；具体所有权与更新约束见
-[数据共享说明](../docs/data-sharing.md)。
-产品配置阶段会拒绝缺少构建元数据的旧包。
+## 如何使用 integration 模板
 
-组件身份在 CMake 构建时自动生成：
-- 名称：由组件构建目标产生。
-- source_id：对组件 src/、include/、cmake/ 与 CMakeLists.txt 内容计算 SHA256；
-  包含未提交改动，不依赖 Git，也不受所在绝对路径影响。
-- built_with_sdk：实际编译 SDK，由库的 GetComponentInfo() 返回。
-- 安装清单额外记录编译器与目标系统/架构，便于追溯，不冒充完整 ABI 检查。
+templates/integration/product_integration.hpp 展示：
+输入校验 → InputGate → ExecutionChannel → Dispatch → 下游/输出回调。
+构造函数是 integration 的装配位置；真实产品在那里创建组件和连接具名端口。
+组件只知道自身的输入输出，不知道谁装配它，也不需要调用其他组件。
 
-编辑、新增或删除上述源码会自动触发重新生成。源码指纹用于识别内容，
-不表达功能大小或兼容性；不包含测试、文档、外部依赖内容或所有编译选项。
-当前组件没有范围外算法源码；将来增加其他源码目录时需同步扩大指纹输入。
-
-生成头文件在 build 中，只含元数据，业务源码仍在源目录。
-安装包 share/roboframe/<component>/VERSION 是自动生成的记录，不是开发者维护入口；
-SDK 的清单位于 share/roboframe/sdk/VERSION。
-组件头文件、库、CMake 导出和清单必须一起交付。产品通过源码目录、安装前缀或
-各组件的 <Package>_DIR 选择具体实现；不会自动下载或升级为“最新版”。
-
-配置阶段检查产品 SDK 选择和组件编译 SDK；运行前再次检查宿主 SDK
-是否与组件的 built_with_sdk 同 major 且不低于它。检查只比较 SDK，
-不再要求 integration 手写组件契约版本。
-预编译组件保留原来的 SDK 与源码标识，宿主升级不会改写这些事实。
-启动日志输出名称、源码标识、编译 SDK；stdout 仍只用于 IPC。
-
-SDK 统一维护，各产品可以固定不同发布版本。SDK 数字与源码指纹都不能自动证明
-组件私有接口或 C++ ABI 兼容；产品维护者仍须选择并验证配套组件包。
-不兼容 SDK 会明确失败，不自动重编第三方安装包。
+模板注入一个计算函数，以便不用伪造组件也能运行验证。
+新产品参考它填写自己的真实端口、组件、预算和重置策略；只复制产品代码，公共机制直接链接 SDK。
+模板不是要求继承的中间层，也不引入 WireComponents 基类。
 
 ~~~sh
 cmake -S sdk -B build-sdk
 cmake --build build-sdk
 ctest --test-dir build-sdk --output-on-failure
 cmake --install build-sdk --prefix /tmp/roboframe-sdk
+cmake -S /tmp/roboframe-sdk/share/roboframe/sdk/templates/integration \
+  -B build-template -DCMAKE_PREFIX_PATH=/tmp/roboframe-sdk
+cmake --build build-template
+ctest --test-dir build-template --output-on-failure
 ~~~
 
-TF 契约见 [坐标链路](../docs/transforms.md)：TimedPose2D 固定为 T_odom_base，不能塞入全局校正 pose。
+模板验证并发接纳期间关闭、协作取消、重新启动后的迟到结果和回调线程。
+SDK 原有双执行组测试继续验证慢组不阻塞快组，地图快照测试验证写时复制。
 
-execution.hpp 提供按需执行边界；具体使用、并发边界和生命周期见 [执行模型](../docs/execution.md)。
+## 内存与交付边界
+
+shared_ptr<const T> 发布后生产者也不能通过可写别名修改数据。不同引用可以并发读取，
+同一个 shared_ptr 变量的并发修改仍需同步。容量按条目计，单条大小、组件历史和外部快照必须另设预算。
+进程内共享不是 IPC 零拷贝，详见 [共享数据](../docs/architecture.md)。
+
+SDK 维护者发布时修改 sdk/VERSION，产品在自己的 Dependencies.cmake 选择精确 SDK 和组件清单。
+组件不手写 SDK/契约版本：构建自动记录名称、源码 SHA256、实际编译 SDK；安装清单记录工具链/架构。
+指纹覆盖 src/include/cmake/CMakeLists，不涵盖外部依赖和所有编译选项，不是 ABI 保证。
+源码/安装包均检查 SDK 同 major 且宿主不低于组件所用版本。头文件、库、导出和清单必须配套。
+
+10.0 将 data 改为 datatype，并移出产品协议；旧源码 include 和旧组件包必须迁移重建。
+stdio v4 线协议及 robot_runtime 文件名保持不变，产品选择名改为 demo_robot。
+[产品指南](../docs/architecture.md) · [执行模型](../docs/architecture.md)

@@ -1,0 +1,3 @@
+add_library(roboframe_stdio_transport stdio_channel.cpp)
+target_include_directories(roboframe_stdio_transport PUBLIC "${PROJECT_SOURCE_DIR}")
+target_compile_features(roboframe_stdio_transport PUBLIC cxx_std_14)

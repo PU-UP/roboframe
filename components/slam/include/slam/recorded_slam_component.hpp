@@ -1,7 +1,7 @@
 #pragma once
-#include <roboframe/component.hpp>
-#include <roboframe/transforms2d.hpp>
-#include <roboframe/scan2d.hpp>
+#include <roboframe/core/component.hpp>
+#include <roboframe/datatype/transforms2d.hpp>
+#include <roboframe/datatype/scan2d.hpp>
 #include <slam/version.hpp>
 #include <deque>
 #include <functional>

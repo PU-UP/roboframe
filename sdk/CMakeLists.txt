@@ -24,6 +24,15 @@ target_include_directories(roboframe_sdk INTERFACE
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
 if(BUILD_TESTING)
+    add_subdirectory(templates/integration)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME sdk_header_layers COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/header_layers_test.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/roboframe)
+    add_executable(integration_test tests/integration_test.cpp)
+    target_link_libraries(integration_test PRIVATE Roboframe::sdk)
+    add_test(NAME integration_test COMMAND integration_test)
+    set_tests_properties(integration_test PROPERTIES TIMEOUT 10)
     add_executable(execution_test tests/execution_test.cpp)
     target_link_libraries(execution_test PRIVATE Roboframe::sdk)
     set_target_properties(execution_test PROPERTIES CXX_STANDARD 14 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
@@ -59,3 +68,6 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/RoboframeSDKConfig.cmake
 install(FILES VERSION DESTINATION ${CMAKE_INSTALL_DATADIR}/roboframe/sdk)
 install(FILES cmake/RoboframeComponentMetadata.cmake cmake/component_version.hpp.in
     DESTINATION ${package_dir})
+
+install(DIRECTORY templates/ DESTINATION ${CMAKE_INSTALL_DATADIR}/roboframe/sdk/templates
+    PATTERN "build*" EXCLUDE)

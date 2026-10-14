@@ -1,5 +1,5 @@
-#include <roboframe/scan2d.hpp>
-#include <roboframe/mapping.hpp>
+#include <roboframe/datatype/scan2d.hpp>
+#include <roboframe/datatype/grid.hpp>
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
@@ -19,8 +19,5 @@ int main() {
     Reject([] { ValidateScan2D({0, {}}); });
     Reject([] { ValidateScan2D({0, {{std::numeric_limits<double>::quiet_NaN(), 0}}}); });
     Reject([] { ValidateScan2D({0, {{0, std::numeric_limits<double>::infinity()}}}); });
-    MappingOptions options{{20, 20, 0.1, -1, -1}, 100};
-    ValidateGridSpec(options.grid);
-    MappingStatus status;
-    Require(options.max_pose_gap_us == 100 && status.phase == MappingPhase::idle && status.session == 0);
+    ValidateGridSpec({20, 20, 0.1, -1, -1});
 }

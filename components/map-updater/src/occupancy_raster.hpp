@@ -1,8 +1,8 @@
 #pragma once
-#include <roboframe/component.hpp>
-#include <roboframe/transforms2d.hpp>
-#include <roboframe/scan2d.hpp>
-#include <roboframe/grid.hpp>
+#include <roboframe/core/component.hpp>
+#include <roboframe/datatype/transforms2d.hpp>
+#include <roboframe/datatype/scan2d.hpp>
+#include <roboframe/datatype/grid.hpp>
 #include <map_updater/occupancy_map_component.hpp>
 #include <memory>
 #include <functional>

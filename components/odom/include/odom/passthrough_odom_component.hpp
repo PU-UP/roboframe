@@ -1,6 +1,6 @@
 #pragma once
-#include <roboframe/component.hpp>
-#include <roboframe/geometry2d.hpp>
+#include <roboframe/core/component.hpp>
+#include <roboframe/datatype/geometry2d.hpp>
 #include <odom/version.hpp>
 #include <functional>
 

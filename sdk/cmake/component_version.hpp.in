@@ -1,6 +1,6 @@
 #pragma once
 // Generated from component sources and the selected SDK; do not edit.
-#include <roboframe/version.hpp>
+#include <roboframe/core/version.hpp>
 namespace @namespace@ {
 constexpr char component_name[] = "@component_name@";
 constexpr char source_id[] = "@source_id@";

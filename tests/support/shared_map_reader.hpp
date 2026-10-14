@@ -1,9 +1,9 @@
 #pragma once
-#include <roboframe/component.hpp>
-#include <roboframe/grid.hpp>
-#include <roboframe/scan2d.hpp>
+#include <roboframe/core/component.hpp>
+#include <roboframe/datatype/grid.hpp>
+#include <roboframe/datatype/scan2d.hpp>
 #include <chrono>
-#include <roboframe/execution.hpp>
+#include <roboframe/core/execution.hpp>
 #include <memory>
 #include <cstdint>
 #include <mutex>

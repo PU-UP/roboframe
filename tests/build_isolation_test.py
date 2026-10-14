@@ -45,6 +45,13 @@ def change_field(manifest, key, value):
     manifest.write_text(text)
 
 
+# These generic components consume only SDK types/mechanisms and their own public headers.
+for component in (ROOT / 'components').iterdir():
+    for folder in ['include', 'src']:
+        for source in (component / folder).rglob('*'):
+            if source.suffix in {'.hpp', '.cpp'}:
+                assert not re.search(r'#include\s*[<"](?:demo_robot/|products/)', source.read_text()), source
+
 checks = []
 with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory:
     work = Path(directory)
@@ -54,6 +61,9 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
     configure(sdk, work / 'sdk-build')
     verify(work / 'sdk-build')
     run(['cmake', '--install', work / 'sdk-build', '--prefix', prefix])
+    configure(prefix / 'share/roboframe/sdk/templates/integration', work / 'template-build', prefix)
+    verify(work / 'template-build')
+    checks.append('PASS: installed integration template builds and tests with SDK only')
     for name in ['odom', 'slam', 'posegraph', 'localmapbuilder', 'map-updater', 'map-server']:
         source = work / name
         copy(ROOT / 'components' / name, source)
@@ -64,9 +74,9 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
 
     app = work / 'app'
     app.mkdir()
-    for name in ['CMakeLists.txt', 'VERSION', 'main.cpp']:
+    for name in ['CMakeLists.txt', 'VERSION']:
         shutil.copy2(ROOT / name, app / name)
-    for name in ['cmake', 'interface', 'integration', 'tests', 'tools']:
+    for name in ['cmake', 'interface', 'products', 'tests', 'tools', 'data']:
         copy(ROOT / name, app / name)
     relocated = work / 'relocated'
     prefix.rename(relocated)
@@ -74,6 +84,29 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
               '-DROBOFRAME_USE_INSTALLED_COMPONENTS=ON')
     verify(work / 'package-build')
     checks.append('PASS: no SDK/component source in host; relocated packages pass the IPC product')
+    # A different product does not inherit robot component dependencies or stdio.
+    alternate = app / 'products/minimal'
+    alternate.mkdir()
+    (alternate / 'Dependencies.cmake').write_text(
+        'set(ROBOFRAME_REQUIRED_SDK_VERSION "' + field(sdk / 'VERSION', 'ROBOFRAME_SDK_VERSION') +
+        '")\nfunction(roboframe_load_components)\nendfunction()\n')
+    (alternate / 'CMakeLists.txt').write_text(
+        'add_executable(minimal_runtime main.cpp)\n'
+        'target_link_libraries(minimal_runtime PRIVATE Roboframe::sdk)\n')
+    shutil.copy2(ROOT / 'sdk/tests/integration_test.cpp', alternate / 'main.cpp')
+    configure(app, work / 'alternate-build', relocated,
+              '-DROBOFRAME_PRODUCT=minimal', '-DROBOFRAME_USE_INSTALLED_COMPONENTS=ON',
+              '-DBUILD_TESTING=OFF')
+    run(['cmake', '--build', work / 'alternate-build', '-j4'])
+    run([work / 'alternate-build/products/minimal/minimal_runtime'])
+    cache = (work / 'alternate-build/CMakeCache.txt').read_text()
+    assert 'ROBOFRAME_ODOM_SOURCE' not in cache
+    targets = run(['cmake', '--build', work / 'alternate-build', '--target', 'help'])
+    assert 'robot_runtime' not in targets and 'roboframe_stdio' not in targets
+    error = run(['cmake', '-S', app, '-B', work / 'bad-product',
+                 '-DROBOFRAME_PRODUCT=../robot'], success=False)
+    assert 'Invalid ROBOFRAME_PRODUCT name' in error
+    checks.append('PASS: second product selects only its own dependencies/entry; invalid selection rejected')
 
     # Only one component source is present; odom/map-server source is not copied into the host.
     (app / 'components').mkdir()
@@ -97,7 +130,7 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
     change_field(app / 'sdk/VERSION', 'ROBOFRAME_SDK_VERSION', '.'.join(map(str, version)))
     error = run(['cmake', '--build', work / 'source-sdk-build'], success=False)
     assert 'Product selects SDK' in error
-    change_field(app / 'cmake/Dependencies.cmake', 'ROBOFRAME_REQUIRED_SDK_VERSION', '.'.join(map(str, version)))
+    change_field(app / 'products/demo_robot/Dependencies.cmake', 'ROBOFRAME_REQUIRED_SDK_VERSION', '.'.join(map(str, version)))
     run(['cmake', '--build', work / 'source-sdk-build', '-j4'])
     generated = (work / 'source-sdk-build/sdk/generated/roboframe/sdk_version.hpp').read_text()
     assert '#define ROBOFRAME_SDK_VERSION_PATCH ' + str(version[2]) in generated
@@ -156,33 +189,44 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
     targets = next((relocated / 'lib/cmake/MapUpdater').glob('*Targets.cmake'))
     original_targets = targets.read_text()
     targets.write_text(original_targets.replace('ROBOFRAME_BUILT_WITH_SDK "' + sdk_version + '"',
-                                               'ROBOFRAME_BUILT_WITH_SDK "9.0.0"'))
+                                               'ROBOFRAME_BUILT_WITH_SDK "99.0.0"'))
     error = run(['cmake', '-S', app, '-B', work / 'mismatch-build', '-DCMAKE_PREFIX_PATH=' + str(relocated),
                  '-DROBOFRAME_USE_INSTALLED_COMPONENTS=ON', '-DROBOFRAME_SDK_SOURCE=SOURCE'], success=False)
     assert 'is incompatible' in error
     targets.write_text(original_targets)
     checks.append('PASS: product SDK selection, legacy packages and incompatible component SDKs are rejected')
 
-    # Interface is independently linkable: SDK only, no integration headers or objects.
+    # Protocol adapter depends only on SDK + public contract, no integration/component implementation.
     public = work / 'public-only'
     (public / 'interface').mkdir(parents=True)
+    (public / 'products/demo_robot/interface').mkdir(parents=True)
+    copy(ROOT / 'products/demo_robot/contract/include/demo_robot', public / 'include/demo_robot')
     copy(relocated / 'include/roboframe', public / 'include/roboframe')
-    for name in ['interface/stdio_interface.hpp', 'interface/stdio_interface.cpp',
+    for name in ['products/demo_robot/interface/demo_stdio_interface.hpp', 'products/demo_robot/interface/demo_stdio_interface.cpp',
                  'interface/stdio_channel.hpp', 'interface/stdio_channel.cpp']:
         shutil.copy2(ROOT / name, public / name)
     shutil.copy2(ROOT / 'tests/interface_binding_test.cpp', public / 'binding_test.cpp')
     run(['c++', '-std=c++14', '-pedantic-errors', '-pthread', '-I' + str(public),
-         '-I' + str(public / 'include'), public / 'interface/stdio_interface.cpp',
+         '-I' + str(public / 'include'), public / 'products/demo_robot/interface/demo_stdio_interface.cpp',
          public / 'interface/stdio_channel.cpp', public / 'binding_test.cpp', '-o', work / 'binding_test'])
     run([work / 'binding_test'])
-    checks.append('PASS: interface links/runs with SDK only and two product bindings, no integration headers/libraries')
-    (public / 'integration').mkdir()
-    shutil.copy2(ROOT / 'integration/robot_integration.hpp', public / 'integration/robot_integration.hpp')
-    shutil.copy2(ROOT / 'main.cpp', public / 'main.cpp')
+    checks.append('PASS: adapter links/runs with SDK + contract and two bindings, no integration/component headers/libraries')
+    (public / 'products/demo_robot').mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / 'products/demo_robot/demo_robot_integration.hpp', public / 'products/demo_robot/demo_robot_integration.hpp')
+    shutil.copy2(ROOT / 'products/demo_robot/main.cpp', public / 'main.cpp')
     run(['c++', '-std=c++14', '-pedantic-errors', '-fsyntax-only', '-I' + str(public),
          '-I' + str(public / 'include'), public / 'main.cpp'])
-    checks.append('PASS: product main compiles with SDK + public entry only, no component/private headers')
+    checks.append('PASS: product main compiles with SDK + contract + public entry only, no component/private headers')
 
+    run(['python3', sdk / 'tests/header_layers_test.py', relocated / 'include/roboframe'])
+    # Product contract is intentionally absent from SDK/package-only component include paths.
+    assert not (relocated / 'include/demo_robot').exists()
+    for header in sorted((public / 'include/demo_robot').glob('*.hpp')):
+        probe = work / 'contract.cpp'
+        probe.write_text('#include <demo_robot/' + header.name + '>\nint main() {}\n')
+        run(['c++', '-std=c++14', '-pedantic-errors', '-fsyntax-only',
+             '-I' + str(public / 'include'), probe])
+    checks.append('PASS: product contract headers compile alone and are absent from SDK/component packages')
     headers = sorted((relocated / 'include').rglob('*.hpp'))
     for header in headers:
         probe = work / 'header.cpp'

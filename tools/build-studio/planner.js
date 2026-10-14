@@ -18,6 +18,7 @@
     const scenario = catalog.scenarios.find(item => item.id === state.scenario);
     const platform = catalog.platforms.find(item => item.id === state.platform);
     if (!scenario || !platform) throw new Error("未知场景或目标平台");
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(scenario.product || "")) throw new Error("无效的产品目录");
     const components = scenario.components.map(id => {
       const definition = catalog.components.find(item => item.id === id);
       const source = state.sources[id];
@@ -35,11 +36,12 @@
     if (!allSource && (!prefix.startsWith("/") || /[\r\n\0;]/.test(prefix)))
       reasons.push("请填写一个绝对安装前缀，不包含换行或分号；当前只使用一个前缀。");
 
-    const buildDirectory = "build/studio/" + platform.id + "/" +
+    const buildDirectory = "build/studio/" + platform.id + "/" + scenario.product + "/" +
       (allSource ? "source" : allPackage ? "package" : "mixed");
     const commands = [];
     if (reasons.length === 0) {
       const args = ["cmake -S . -B " + shellQuote(buildDirectory),
+        "-DROBOFRAME_PRODUCT=" + scenario.product,
         "-DROBOFRAME_USE_INSTALLED_COMPONENTS=" + (allPackage ? "ON" : "OFF"),
         "-DBUILD_TESTING=" + (state.tests ? "ON" : "OFF")];
       args.push("-DROBOFRAME_SDK_SOURCE=" + (allSource ? "SOURCE" : "PACKAGE"));
@@ -56,7 +58,7 @@
       sdkSource: allSource ? "SOURCE" : "PACKAGE",
       intent: {
         schemaVersion: catalog.schemaVersion, kind: "roboframe-build-intent",
-        scenario: scenario.id, platform: platform.id,
+        scenario: scenario.id, product: scenario.product, platform: platform.id,
         sdkSource: allSource ? "SOURCE" : "PACKAGE",
         components: components.map(item => ({ id: item.id, source: item.source })),
         packagePrefix: allSource ? null : prefix,

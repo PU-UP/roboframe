@@ -20,7 +20,7 @@ class Session:
         self.buffer = b''
         self.events = []
         self.ident = 0
-        assert self.line() == 'READY roboframe-v3'
+        assert self.line() == 'READY roboframe-v4'
 
     def write(self, text):
         data = text.encode()
@@ -82,6 +82,7 @@ class Session:
     def prepare(self, size=20):
         assert self.req('SUBSCRIBE ON') == 'OK SUBSCRIBE'
         assert self.req(f'CONFIG {size} {size} 1 -5 -5 100') == 'OK CONFIG'
+        assert self.req('RUN') == 'OK RUN'
         assert self.req('BEGIN 1') == 'OK BEGIN'
         self.write('DATA ODOM 0 0 0 0\nDATA SCAN 0 1 2 0\n')
         assert self.req('FINISH') == 'ACCEPTED FINISH'
@@ -103,14 +104,15 @@ class Publication(unittest.TestCase):
     def test_odom_without_scan_and_unsubscribe(self):
         s = self.s
         s.req('CONFIG 20 20 1 -5 -5 100')
+        s.req('RUN')
         s.req('SUBSCRIBE ON')
         s.write('DATA ODOM 0 1 2 0.5\n')
         event = s.line().split()  # No STATUS or any other request to elicit output.
         self.assertEqual(event[2:], ['ODOM', '0', '1', '2', '0.5'])
         s.req('SUBSCRIBE OFF')
         s.write('DATA ODOM 1 2 2 0.5\n')
-        self.assertEqual(s.req('TF'), 'TF unavailable')
-        self.assertEqual(s.events, [])
+        self.assertTrue(s.req('TF').startswith('TF '))
+        self.assertTrue(all(e[2] == 'TF' for e in s.events))
         self.assertEqual(s.req('QUIT'), 'BYE')
         self.assertEqual(s.p.wait(timeout=3), 0)
 
@@ -128,20 +130,21 @@ class Publication(unittest.TestCase):
         self.assertEqual(s.req('GET_MAP baseline').split(), map1)
         s.wait_compute()
         self.assertNotEqual(s.req('GET_MAP live').split()[-1], map1[-1])
-        s.req('LOAD first')
-        map2 = s.req('GET_MAP live').split()
-        self.assertGreater(int(map2[2]), int(map1[2]))
+        s.req('STOP'); s.req('LOAD first')
+        map2 = s.req('GET_MAP baseline').split()
+        self.assertEqual(int(map2[2]), 0)
         self.assertEqual(map2[-1], map1[-1])
         self.assertEqual(s.req('TF'), 'TF unavailable')
-        s.req('BEGIN 2'); s.req('CANCEL')
-        self.assertTrue(s.req('GET_MAP live').startswith('ERROR'))
+        s.req('RUN'); s.req('BEGIN 2'); s.req('CANCEL')
+        self.assertEqual(s.req('RUNTIME').split()[1], 'RUNNING')
+        self.assertEqual(s.req('GET_MAP baseline').split()[-1], map1[-1])
         self.assertEqual(s.req('QUIT'), 'BYE')
         self.assertEqual(s.p.wait(timeout=3), 0)
-        self.assertTrue(any(e[2:4] == ['MAPPING', 'stopped'] for e in s.events))
+        self.assertTrue(any(e[2:4] == ['RUNTIME', 'IDLE'] for e in s.events))
 
     def test_slow_reader_coalesces_without_blocking_input(self):
         s = self.s
-        s.req('SUBSCRIBE ON'); s.req('CONFIG 20 20 1 -5 -5 100'); s.req('BEGIN 1')
+        s.req('SUBSCRIBE ON'); s.req('CONFIG 20 20 1 -5 -5 100'); s.req('RUN'); s.req('BEGIN 1')
         s.write('DATA ODOM 0 0 0 0\nDATA SCAN 0 1 2 0\n')
         s.req('STATUS')
         s.wait_compute()
@@ -189,7 +192,7 @@ class Publication(unittest.TestCase):
 
     def test_eof_emits_stop_without_saving(self):
         s = self.s
-        s.req('CONFIG 20 20 1 -5 -5 100'); s.req('SUBSCRIBE ON'); s.req('BEGIN 1')
+        s.req('CONFIG 20 20 1 -5 -5 100'); s.req('SUBSCRIBE ON'); s.req('RUN'); s.req('BEGIN 1')
         s.write('DATA ODOM 0 0 0 0\nDATA SCAN 0 1 2 0\n')
         s.p.stdin.close()
         lines = []

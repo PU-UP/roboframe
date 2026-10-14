@@ -1,6 +1,6 @@
 #pragma once
-#include <roboframe/component.hpp>
-#include <roboframe/grid.hpp>
+#include <roboframe/core/component.hpp>
+#include <roboframe/datatype/grid.hpp>
 #include <map_server/version.hpp>
 #include <string>
 

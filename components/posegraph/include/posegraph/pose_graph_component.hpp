@@ -1,6 +1,6 @@
 #pragma once
-#include <roboframe/component.hpp>
-#include <roboframe/submap2d.hpp>
+#include <roboframe/core/component.hpp>
+#include <roboframe/datatype/submap2d.hpp>
 #include <posegraph/version.hpp>
 #include <map>
 namespace posegraph {

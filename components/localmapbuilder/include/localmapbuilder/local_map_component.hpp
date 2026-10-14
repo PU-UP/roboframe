@@ -1,6 +1,6 @@
 #pragma once
-#include <roboframe/component.hpp>
-#include <roboframe/submap2d.hpp>
+#include <roboframe/core/component.hpp>
+#include <roboframe/datatype/submap2d.hpp>
 #include <localmapbuilder/version.hpp>
 namespace localmapbuilder {
 roboframe::ComponentInfo GetComponentInfo();

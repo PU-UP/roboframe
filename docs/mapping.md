@@ -5,8 +5,8 @@
 
 ```mermaid
 flowchart LR
-  Python[Python: raw odom / scan / 参考位姿] --> IPC[interface: SDK 输入]
-  IPC --> Flow[integration/data_flow]
+  Python[Python: raw odom / scan / 参考位姿] --> IPC[interface: 公开契约]
+  IPC --> Flow[products/demo_robot/data_flow]
   Flow --> Odom[PassthroughOdomComponent]
   Flow --> SLAM[RecordedSlamComponent]
   Odom -->|采集时刻局部 pose| SLAM
@@ -35,20 +35,26 @@ flowchart LR
 ## 数据与执行
 
 1. Python 校验数据来源并把原始 scan、raw odom、稀疏修正位姿分别发送；数据集格式留在适配器。
-2. SensorFlow 的短锁串行访问轻量 Odom、录制 SLAM、PoseGraph；PoseBuffer 按 scan 的采集时间插值 odom。真实重算法接入后按需迁到独立 ExecutionChannel。
+2. SensorIngress 的短锁串行访问轻量 Odom、录制 SLAM、PoseGraph；PoseBuffer 按 scan 的采集时间插值 odom。真实重算法接入后按需迁到独立 ExecutionChannel。
 3. SLAM 输出 MapPose2D；PoseGraph 用同一时刻的 odom 推导 T_map_odom。每次原始 odom 可传播当前全局位姿，不等待地图计算。没有修正或修正过期时输出无效。
-4. 接纳的扫描注册节点，传入容量 8 的通用计算通道。LocalMapBuilder 和 MapUpdater 当前共用这个串行执行组；它们与传感器接收/轻量定位独立运行。
-5. LocalMapBuilder 默认每 16 帧开始新子图。integration 在定位修正时间发生变化时也要求新锚点，避免把一次新修正混入旧子图坐标；这个策略归当前产品，不写进 SDK。
+4. 有有效定位的扫描注册节点，所有配对成功的 scan 都可传入容量 8 的计算通道；缺少全局 TF 不阻止局部子图。LocalMapBuilder 和 MapUpdater 当前共用这个串行执行组；它们与传感器接收/轻量定位独立运行。
+5. LocalMapBuilder 默认每 16 帧开始新子图。integration 在定位修正时间发生变化时也要求新锚点，避免把一次新修正混入旧子图坐标；恢复有效全局定位或重新进入栅格范围也新开锚点；这个策略归当前产品，不写进 SDK。
 6. 子图局部原点是首帧 base。每帧保留同一 scan 引用以及 T_local_base；锚点由 PoseGraph 提供。MapUpdater 接收子图快照，正常只积分新增帧，不复制 scan payload。
 7. Poll 在业务 owner 上收集计算完成结果，发布地图与任务事件。输入接纳、算法完成、对外发布是三个阶段。
 
 ## 指令与生命周期
 
-main 装配产品并绑定 SDK ProductInputs/ProductOutputs。CONFIG 创建并激活组件；
-BEGIN 开新 generation、清理定位上下文；FINISH 暂停接纳并排空，finished 事件后冻结基准地图；SAVE 保存基准地图。
-本产品允许 FINISH 后继续更新实时地图，以验证旧快照稳定；这不是机器人通用工作模式。
-CANCEL 关闭上下文并取消旧 generation；下一次计算重置私有子图/栅格历史，旧结果不会进入新任务。
-QUIT/EOF 关闭输入、停止计算、释放历史；不会自动保存。LOAD 只加载栅格，不能恢复定位或子图更新。
+main 装配产品并绑定产品契约 DemoRobotInputs/DemoRobotOutputs。CONFIG 后是 IDLE；
+RUN 启动持续能力，不要求存在建图任务。BEGIN 仅给后续输入附加任务标签，不清定位、图节点或地图。
+FINISH 记录任务结果边界，之后输入继续计算；完成时冻结任务最后一张快照，SAVE 保存它。
+CANCEL 不改变运行 generation，不关闭队列；旧任务结果仍可更新实时地图，但不回填后续任务。
+因此两次 BEGIN 共用持续地图，想从空地图采集应显式 RESET → RUN。
+
+STOP 关闭输入并等待协作取消，RESET 清工作 atlas/定位上下文，RUN 开始新 generation。
+已完成的基准快照及磁盘文件保留。QUIT/EOF 最终关闭，不自动保存。
+LOAD 要求 IDLE，只读取基准资产，不伪造实时地图、定位或子图历史；加载资产的运行 generation 标为 0。
+运行状态变化由 RUNTIME 事件报告，只有正在执行的任务被停止时才有 MAPPING stopped。
+完整规则见 [运行骨架](architecture.md)。
 
 ## 历史修正
 
@@ -60,7 +66,7 @@ tests/submap_pipeline_test.cpp 直接连接五个组件，验证旧墙消失、�
 ## 运行
 
 ```sh
-cmake -S . -B build-product -DCMAKE_BUILD_TYPE=Debug
+cmake -S . -B build-product -DROBOFRAME_PRODUCT=demo_robot -DCMAKE_BUILD_TYPE=Release
 cmake --build build-product -j4
 ctest --test-dir build-product --output-on-failure
 python3 tools/mapping/replay.py --dataset tf --scans 0 --binary build-product/robot_runtime --output build-product/submap-result
@@ -69,16 +75,44 @@ python3 tests/build_isolation_test.py
 
 输出目录必须是新目录。replay.html 可播放地图快照与轨迹，summary.json 记录节点、子图、共享点数、队列峰值和任务统计。
 raw 验证原始里程计；corrected 验证 910 个配对关键帧；tf 验证全部 13,631 帧和 910 次稀疏定位修正。
-完整数据最初 168 帧没有有效全局参考，明确跳过，不默认使用单位变换。
+完整数据最初 168 帧没有有效全局参考，仍生成局部子图，仅跳过全局栅格放置；不默认使用单位变换。
 地图质量与通道吞吐是不同指标；离线回放按批次排空以避免人为过载。
 
-## 本轮验收记录
 
-- 本地主线整理提交：673dda7；后续链路在 codex/submap-posegraph-pipeline 分支。
-- 常规回归与 UBSan 未定义行为检查各 23 项通过；包含慢计算下继续发布定位和定位过期事件、并发接收、会话切换、取消/关闭、慢读与断连。
-- 六个组件各自仅依赖 SDK 构建/测试/安装；安装包重定位、无组件源码产品、混合 SOURCE/PACKAGE 及公开头文件检查通过。
-- 完整 TF 回放：13,631 scan、910 次修正、1,408 子图、13,463 节点、2,353,551 个共享扫描点；队列峰值 4/8，无计算过载或历史容量拒收。
-- 建图结束前 10,736 帧积分、168 帧 TF 未就绪跳过；结束后继续更新 2,727 帧，冻结快照及保存/重载一致。
-- corrected 回放 910 帧无丢弃；保守连通性检查 20,039 个可达格、46.5 m 路径。此项仅为离线地图诊断，不是导航功能。
-- raw 对照回放 1,000 帧通过。最终回放在 build-product/pipeline-final/replay.html，修正参考在 pipeline-corrected/。
-- 验证环境为 WSL Ubuntu 22.04 / x86_64，未验证 ARM、真实 SLAM、实机时限或导航控制。
+## 坐标与数据来源
+
+原始日志和修正轨迹的来源、校验值、配对方式见 [数据说明](../data/intel-lab/README.md)。
+raw odom 不被修改；RecordedSlam 只按采集时刻提供录制的修正 pose，不声称运行在线 SLAM。
+
+T_parent_child 把 child 坐标转换到 parent；单位为米/弧度，时间为同一采集时钟的微秒：
+
+- Odom：T_odom_base；参考 SLAM：T_map_base。
+- PoseGraph：T_map_odom = T_map_base × inverse(T_odom_base)，必须使用同一时刻的 odom。
+- 当前全局 pose：有效的历史 T_map_odom × 当前 T_odom_base，不使用未来修正；过期则无效。
+- 子图首帧定义 local 原点，内部存 T_local_base；全局积分使用 T_map_node × T_local_base。
+
+节点/子图 ID 只在本次运行 generation 内有效；revision 表示更新版本。
+子图是追加前缀，旧帧 scan/pose 不可悄悄修改；历史节点修正必须提升版本。
+加载栅格不能恢复 SLAM/atlas，也不能当成已经重定位。
+MapServer 的 RFGRID1 表示旧 odom 坐标地图；RFGRID2 显式记录 map 坐标标签。
+两者都可读取，但不能把旧格式直接当作 map 坐标资产。
+
+Scan2D 保存已经转换到 base 坐标系的有效二维命中点；Python 负责数据集角度、外参与配对。
+当前光线原点为 base，无返回量测被省略；非零传感器原点、逐束时间、去畸变需要更丰富的契约。
+当前 20 米过滤属于这个示例的输入限制。地图质量不是框架正确性的证明，也不能据录制轨迹验证控制闭环。
+
+## 验收入口与已知限制
+
+- ctest：25 项，覆盖 SDK 双执行组、模板、共享快照、并发输入、任务边界、慢读、断连和关闭。
+- mapping_execution_ipc：320 帧真实数据，50 ms 延迟下无任务/取消后继续运行；
+  mapping_execution_test 验证 5 秒注入延迟可协作取消，停止时间要求小于 500 ms。
+- tests/build_isolation_test.py：六组件独立构建安装、纯包/混合构建、产品选择隔离、
+  协议适配无 integration 依赖、安装模板与公开头独立编译。
+- 完整 tf 回放：13,631 scan/odom、910 次修正；最初 168 帧无全局定位但仍构建局部子图。
+  FINISH 后继续更新，冻结地图、IPC 读取与保存/重载逐字节对比。
+- 最近完整产物在 build-demo/demo-verified（本地产物，不随仓库交付）；常规和 UBSan 各 25 项通过。
+  依赖整理前后 final.rfgrid、live.rfgrid 逐字节一致。
+
+验证环境为 WSL Ubuntu 22.04 / x86_64 / C++14。离线回放分批排空，不代表实时吞吐；
+历史修正尚未接入运行时输入流，当前完整 atlas 重放也不解决子图内部形变。
+ARM、真实 VIO/SLAM、ROS/DDS 和实机时限未验证。后续统一维护在 [TODO](../TODO.md)。

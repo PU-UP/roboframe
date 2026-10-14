@@ -1,5 +1,5 @@
-#include <roboframe/grid.hpp>
-#include <roboframe/scan2d.hpp>
+#include <roboframe/datatype/grid.hpp>
+#include <roboframe/datatype/scan2d.hpp>
 #include <set>
 #include <stdexcept>
 #include <type_traits>
