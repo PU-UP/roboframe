@@ -9,7 +9,7 @@
 2. docs/architecture.md：运行骨架、产品接线、线程与所有权边界。
 3. TODO.md：当前基线、已知限制和建议顺序。
 4. sdk/README.md：公开类型准入和交付规则。
-5. 改示例产品时再读 docs/mapping.md、docs/ipc.md。
+5. 改示例产品时再读 docs/demo_robot.md、docs/ipc.md。
 
 沿 main.cpp → SDK Integration → demo_robot_integration → data_flow → tasks 阅读。
 新产品参考 sdk/templates/integration，不复制整个 demo_robot。

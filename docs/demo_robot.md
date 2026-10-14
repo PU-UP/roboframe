@@ -1,6 +1,6 @@
-# 五组件建图链路
+# demo_robot 示例产品
 
-这是 C++14 的可运行架构验证。Odom 透传原始里程计，SLAM 回放数据集修正位姿，PoseGraph 维护坐标关系与节点；LocalMapBuilder 构建短窗口子图，MapUpdater 生成全局占据栅格。MapServer 保留保存/加载能力。
+demo_robot 是 C++14 的可运行示例产品，当前以持续感知与建图任务验证框架。建图是该产品的一项流程，不代表整个 integration。Odom 透传原始里程计，SLAM 回放数据集修正位姿，PoseGraph 维护坐标关系与节点；LocalMapBuilder 构建短窗口子图，MapUpdater 生成全局占据栅格。MapServer 保留保存/加载能力。
 不接 Brain、不建导航空壳、不运行真实 SLAM 或图优化器。
 
 ```mermaid

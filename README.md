@@ -8,7 +8,7 @@ C++14 的机器人算法框架：interface → integration → component。
 
 1. [架构与新产品接入](docs/architecture.md)：职责、线程、生命周期、数据共享。
 2. [骨架图](docs/runtime-architecture.svg)，再读 products/demo_robot/main.cpp。
-3. [建图示例](docs/mapping.md)：组件接线、坐标和真实数据验证。
+3. [demo_robot 示例产品](docs/demo_robot.md)：组件接线、坐标和真实数据验证。
 4. [IPC 协议](docs/ipc.md)、[SDK 规则与模板](sdk/README.md)。
 5. [TODO](TODO.md)：当前边界与下一步；新 agent 先读 [AGENTS.md](AGENTS.md)。
 
@@ -37,7 +37,7 @@ python3 tools/mapping/replay.py --dataset tf --scans 0 --finish-after 12267   --
 输出目录必须不存在，避免覆盖地图；打开结果中的 replay.html。
 数据在 data/intel-lab，无需 history；build* 和 history 不代表当前源码。
 旧构建缓存如果选择 robot，须显式改为 demo_robot 或使用新目录。
-CONFIG 只配置，RUN 后持续计算；BEGIN/FINISH/CANCEL 只控制任务。详见建图示例。
+CONFIG 只配置，RUN 后持续计算；BEGIN/FINISH/CANCEL 只控制任务。详见demo_robot 示例产品。
 
 ## 独立开发与混合构建
 

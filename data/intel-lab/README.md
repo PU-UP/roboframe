@@ -61,7 +61,7 @@ python3 tests/intel_reference_check.py build-product/corrected-reference/live.rf
 
 当前接入独立 SLAM、PoseGraph、LocalMapBuilder 与完整 TF：raw odom 与 corrected pose 分开输入，地图显式标记 map 坐标。
 `--dataset corrected` 回放匹配的 910 帧，`--dataset tf` 回放全部原始扫描并稀疏校正；两者通过 SLAM 输出修正 pose，由 PoseGraph 计算 T_map_odom。
-具体运行、时间有效性和 RFGRID2 兼容说明见 [TF 数据链路](../../docs/mapping.md)。
+具体运行、时间有效性和 RFGRID2 兼容说明见 [TF 数据链路](../../docs/demo_robot.md)。
 
 规划使用前应重新生成当前格式的地图，不直接使用旧 build 产物：
 - live.rfgrid 包含回放末尾的实时地图；final.rfgrid 是 FINISH 边界的冻结结果。

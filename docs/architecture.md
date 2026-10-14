@@ -4,7 +4,7 @@
 
 阅读顺序：products/demo_robot/main.cpp → sdk/include/roboframe/core/integration.hpp →
 products/demo_robot/demo_robot_integration.cpp → data_flow/wiring.cpp、sensor_ingress.cpp、
-result_dispatch.cpp → tasks/mapping.cpp。具体算法连接见 [建图示例](mapping.md)。
+result_dispatch.cpp → tasks/mapping.cpp。具体算法连接见 [demo_robot 示例产品](demo_robot.md)。
 
 ## 职责与依赖
 

@@ -93,7 +93,7 @@ map_revision drop_sync drop_queue drop_bounds drop_cancel。
 RUNTIME 返回 state generation。
 TF 返回 odom_stamp correction_stamp odom_x odom_y odom_yaw corr_x corr_y corr_yaw
 global_x global_y global_yaw，或 unavailable。
-地图和坐标含义见 [建图示例](mapping.md)。
+地图和坐标含义见 [demo_robot 示例产品](demo_robot.md)。
 
 ### 输出类别
 
