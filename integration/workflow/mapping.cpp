@@ -70,7 +70,7 @@ void RobotIntegration::Impl::LoadMap(const std::string& name) {
     resources_.live_dropped += input.pending + input.submitted - completed_;
     completed_ = input.submitted; computation_.Reset(++generation_);
     frozen_ = std::move(map); live_ = frozen_; computed_.reset(); latest_scan_.reset(); updating_ = false;
-    planner_.Submit(live_); ++resources_.publications; status_.phase = MappingPhase::ready;
+    ++resources_.publications; status_.phase = MappingPhase::ready;
     if (outputs_.transforms) outputs_.transforms({});
     if (outputs_.map) outputs_.map({generation_, live_});
     EmitMapping(MappingEventKind::loaded, name);

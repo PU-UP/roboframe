@@ -32,7 +32,6 @@ struct MapRequests {
 struct DiagnosticRequests {
     std::function<TransformStatus2D()> transforms;
     std::function<DataFlowStatus()> resources;
-    std::function<void()> check_readers_idle;
 };
 // Current protocol's groups, not a universal list of robot capabilities.
 struct ProductInputs {

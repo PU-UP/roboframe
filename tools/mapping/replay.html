@@ -28,10 +28,10 @@ a{color:#1664ad}.files{display:flex;flex-wrap:wrap;gap:14px;margin:18px 0}.warni
 <p id="snapshot" class="muted"></p>
 </section><aside class="panel">
 <h2>链路与验收结果</h2><div class="stage" id="stage"></div>
-<p class="muted">Python 日志适配 ↔ 双向管道 IPC ↔ interface ↔ integration<br>odom → lidar-map 校正 → 完整 TF + scan → map-updater → 只读 planner / map-server</p>
+<p class="muted">Python 日志适配 ↔ 双向管道 IPC ↔ interface ↔ integration<br>odom → lidar-map 校正 → 完整 TF + scan → map-updater → map-server / interface</p>
 <dl id="stats"></dl>
 <div class="files"><a id="tf-link" href="tf-trace.json" hidden>TF记录</a><a href="summary.json">验收数据</a><a href="final.png">基准地图</a><a href="live.png">实时地图</a><a href="mapping-events.jsonl">响应与主动事件</a></div>
-<p class="warning"><span id="source-note"></span>旧快照一致和重载通过只表示数据链路通过；地图几何质量需另行评估。planner 只读取数据，不生成路径。复制量不含初始分配、指针表和 IPC 解码；它不是进程总内存统计。结束建图不代表机器人已停止运动。</p>
+<p class="warning"><span id="source-note"></span>旧快照一致和重载通过只表示数据链路通过；地图几何质量需另行评估。当前不含导航算法。复制量不含初始分配、指针表和 IPC 解码；它不是进程总内存统计。结束建图不代表机器人已停止运动。</p>
 </aside></div></main>
 <script>
 const report=__REPORT__, s=report.summary, timeline=document.getElementById('time');
@@ -53,10 +53,8 @@ const stats=[
 ['TF 数值校验',(s.tf_checks||0)+' 次'],
 ['时间匹配等丢弃',s.before.dropped+' 帧'],
 ['结束后继续更新',s.resources.live_updates+' scan'],
-['Planner 读完 / 替换待处理',s.resources.planner_completed+' / '+s.resources.planner_replaced],
 ['计算通道最大持有',(s.resources.compute_peak_retained||0)+' / 8 项'],
 ['计算过载拒收 / 迟到结果',(s.resources.compute_rejected||0)+' / '+(s.resources.stale_results||0)],
-['Planner 最大持有 / 不一致',s.resources.planner_peak_retained+' 份 / '+s.resources.planner_inconsistent+' 次'],
 ['单张地图栅格数据',(s.resources.map_bytes/1048576).toFixed(2)+' MiB'],
 ['整段回放累计复制地图块',(s.resources.copied_bytes/1048576).toFixed(2)+' MiB'],
 ['若每次全图复制：累计估算',(s.full_snapshot_equivalent_bytes/1048576).toFixed(2)+' MiB'],
@@ -80,7 +78,7 @@ function draw(){
  }
  if(n>0){const p=report.trajectory[n-1];if(p[1]!==null){const [x,y]=point(p);ctx.fillStyle='#cb3b40';ctx.beginPath();ctx.arc(x,y,Math.max(3,s.width/200),0,Math.PI*2);ctx.fill()}}
  document.getElementById('frame').textContent=n+' / '+s.replayed_scans;
- document.getElementById('stage').textContent=n===0?'组件启动，尚未输入扫描':n<s.finish_after?'建图中：扫描与同一时刻的 odom 绑定':'基准地图已保存；实时地图继续更新，planner 读取稳定快照';
+ document.getElementById('stage').textContent=n===0?'组件启动，尚未输入扫描':n<s.finish_after?'建图中：扫描与同一时刻的 odom 绑定':'基准地图已保存；实时地图继续更新，旧快照保持稳定';
  document.getElementById('snapshot').textContent=f<0?'尚未到第一个地图检查点。':'当前显示真实快照：已融合 '+report.frames[f].revision+' 帧，数据时间 '+(report.frames[f].stamp_us/1e6).toFixed(2)+' s；已知栅格 '+report.frames[f].known.toLocaleString()+'。';
 }
 let timer=null;const button=document.getElementById('play');

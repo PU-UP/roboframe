@@ -72,13 +72,8 @@ int main() {
     integration.PushScan(Scan(150));
     Drain(integration);
     Check(integration.map() == frozen && integration.mapping_status().ignored == 0);
-    for (;;) {
-        try { integration.WaitPlanner(); break; }
-        catch (const std::logic_error&) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
-    }
     Check(integration.live_map()->revision > frozen->revision);
     Check(integration.data_flow_status().live_updates == 1);
-    Check(!integration.data_flow_status().planner_inconsistent);
     integration.PushOdometry({300, {100, 0, 0}});
     integration.PushScan(Scan(300));
     Drain(integration);

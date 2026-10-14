@@ -20,7 +20,7 @@ components/odom/                        PassthroughOdomComponent
 components/lidar-map/                   RecordedLidarMapComponent（录制校正后端）
 components/map-updater/                 OccupancyMapComponent
 components/map-server/                  FileMapComponent
-components/planner/                     ReadOnlyPlannerComponent（读取验证，不生成路径）
+tests/support/                          共享快照读取验证（不参与产品运行）
 sdk/                                   公共数据、生命周期、可选任务、日志、版本
 tools/mapping/                          外部回放和地图查看
 tools/build-studio/                     源码/安装包/混合构建命令预览
@@ -106,7 +106,7 @@ python3 tools/mapping/replay.py --dataset tf --scans 0 --finish-after 12267 \
 输出目录必须不存在，防止覆盖地图。两份示例日志已包含在 data/intel-lab/，无需 history 目录；来源和校验方式见 [数据说明](data/intel-lab/README.md)。
 查看输出 replay.html；[链路、协议与地图验证](docs/mapping.md)。
 FINISH 异步接受结束请求，finished 事件后冻结基准快照，之后 scan 继续更新实时地图。SAVE 保存基准，SNAPSHOT 保存当前地图；
-planner 读取共享 scan 和地图。详见 [大数据共享与验收](docs/data-sharing.md)。
+共享 scan 和地图由测试中的 SharedMapReader 验证。详见 [大数据共享与验收](docs/data-sharing.md)。
 
 ## 双向 IPC
 stdio v3 支持 REQ/RES 请求关联、DATA 传感器输入及主动 EVENT。默认不订阅，SUBSCRIBE ON 开启输出。
@@ -125,7 +125,7 @@ cmake --build build-odom
 ctest --test-dir build-odom --output-on-failure
 cmake --install build-odom --prefix "$PWD/build-packages"
 ~~~
-map-updater、map-server、planner 同样构建安装。仅使用安装包：
+map-updater、map-server 同样构建安装。仅使用安装包：
 ~~~sh
 cmake -S . -B build-packaged -DROBOFRAME_USE_INSTALLED_COMPONENTS=ON \
   -DCMAKE_PREFIX_PATH="$PWD/build-packages"
@@ -148,7 +148,7 @@ component 不再有手写 VERSION 或 contract_version，也不自行填写 SDK 
 源码变化自动更新指纹，SDK 与产物记录不同则按兼容规则拒绝，不篡改旧包记录。
 源码指纹用于追溯，不是兼容性保证。[SDK 规则](sdk/README.md)。
 
-integration 和地图写入仍串行；planner 有一个独立只读线程。静态链接，无 BT、线程池、动态插件或 ARM 工具链。
+业务状态有序处理，地图计算独立执行；共享读取器仅在测试中使用。静态链接，无 BT、线程池、动态插件或 ARM 工具链。
 
 多产品布局、BT、异步数据、ROS/DDS、ARM 和工具演进统一记录在 [TODO.md](TODO.md)。
 

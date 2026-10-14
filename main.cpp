@@ -24,7 +24,6 @@ roboframe::ProductInputs BindProduct(roboframe::RobotIntegration& product) {
     inputs.maps.view = [&](bool baseline) { return product.map_view(baseline); };
     inputs.diagnostics.transforms = [&] { return product.transforms(); };
     inputs.diagnostics.resources = [&] { return product.data_flow_status(); };
-    inputs.diagnostics.check_readers_idle = [&] { product.WaitPlanner(); };
     return inputs;
 }
 }

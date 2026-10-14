@@ -64,8 +64,8 @@ Scan2D 发布后生产者不得通过其他可写别名修改数据；消费者�
 现有 GridSpec 校验仍混有资源上限，已记入待办，不在本次扩大重构。
 
 SDK 不强制 Integration 基类或通用 AddData。无真实配置的组件不设空 Config。
-integration 的 typed 传感器入口可并发调用；业务状态由业务 owner 有序管理。地图计算和 planner 复用 ExecutionChannel，只有需要独立执行的通路才使用它。各组件头文件声明并发、回调和异常语义。
-日志 sink 不重入日志 API；其异常被日志层吞掉。日志及 planner 的跨线程入口有同步；SDK 类型不自动保证所有可变对象的线程安全。
+integration 的 typed 传感器入口可并发调用；业务状态由业务 owner 有序管理。地图计算和测试读取器 复用 ExecutionChannel，只有需要独立执行的通路才使用它。各组件头文件声明并发、回调和异常语义。
+日志 sink 不重入日志 API；其异常被日志层吞掉。日志及测试读取器 的跨线程入口有同步；SDK 类型不自动保证所有可变对象的线程安全。
 组件 tests 下的 main 可脱离框架运行，不维护两套相同示例。
 
 ## 版本与交付

@@ -1,10 +1,9 @@
-#include <planner/read_only_planner_component.hpp>
+#include "tests/support/shared_map_reader.hpp"
 #include <algorithm>
 #include <stdexcept>
 #include <utility>
 
-namespace planner {
-roboframe::ComponentInfo GetComponentInfo() { return {component_name, source_id, roboframe::sdk_version}; }
+namespace test_support {
 namespace {
 std::uint64_t Hash(const roboframe::Grid& map, const roboframe::Scan2D* scan) {
     std::uint64_t hash = 14695981039346656037ULL;
@@ -22,11 +21,11 @@ std::uint64_t Hash(const roboframe::Grid& map, const roboframe::Scan2D* scan) {
     return hash;
 }
 }
-ReadOnlyPlannerComponent::ReadOnlyPlannerComponent(std::chrono::milliseconds delay) : read_delay_(delay) {
-    if (delay.count() < 0 || delay.count() > 1000) throw std::invalid_argument("planner read delay must be 0..1000 ms");
+SharedMapReader::SharedMapReader(std::chrono::milliseconds delay) : read_delay_(delay) {
+    if (delay.count() < 0 || delay.count() > 1000) throw std::invalid_argument("shared reader read delay must be 0..1000 ms");
 }
-ReadOnlyPlannerComponent::~ReadOnlyPlannerComponent() { Deactivate(); }
-void ReadOnlyPlannerComponent::Activate() {
+SharedMapReader::~SharedMapReader() { Deactivate(); }
+void SharedMapReader::Activate() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (active_) return;
     status_ = {};
@@ -35,7 +34,7 @@ void ReadOnlyPlannerComponent::Activate() {
         roboframe::Overload::latest_pending);
     execution_->Reset(1); active_ = true;
 }
-void ReadOnlyPlannerComponent::Deactivate() {
+void SharedMapReader::Deactivate() {
     std::shared_ptr<Execution> execution;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -46,18 +45,18 @@ void ReadOnlyPlannerComponent::Deactivate() {
     std::lock_guard<std::mutex> lock(mutex_);
     execution_.reset(); status_.pending = status_.active_read = false;
 }
-roboframe::Lifecycle ReadOnlyPlannerComponent::lifecycle() const {
+roboframe::Lifecycle SharedMapReader::lifecycle() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return active_ ? roboframe::Lifecycle::active : roboframe::Lifecycle::inactive;
 }
-void ReadOnlyPlannerComponent::Submit(roboframe::GridSnapshot map, roboframe::Scan2DPtr scan) {
-    if (!map) throw std::invalid_argument("planner needs map");
+void SharedMapReader::Submit(roboframe::GridSnapshot map, roboframe::Scan2DPtr scan) {
+    if (!map) throw std::invalid_argument("shared reader needs map");
     roboframe::ValidateGridSpec(map->spec);
     if (scan) roboframe::ValidateScan2D(*scan);
     if (!map->revision || map->stamp_us < 0 || map->cells.size() != std::size_t(map->spec.width) * map->spec.height ||
-        (scan && map->stamp_us != scan->stamp_us)) throw std::invalid_argument("planner input mismatch");
+        (scan && map->stamp_us != scan->stamp_us)) throw std::invalid_argument("shared reader input mismatch");
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!active_) throw std::logic_error("planner inactive");
+    if (!active_) throw std::logic_error("shared reader inactive");
     Collect();
     auto accepted = execution_->Submit(1, {map, scan});
     // A completion may consume the last credit between Collect and Submit; collecting it is nonblocking.
@@ -65,11 +64,11 @@ void ReadOnlyPlannerComponent::Submit(roboframe::GridSnapshot map, roboframe::Sc
         Collect(); accepted = execution_->Submit(1, {std::move(map), std::move(scan)});
     }
     if (accepted != roboframe::Admission::accepted && accepted != roboframe::Admission::replaced)
-        throw std::logic_error("planner admission unavailable");
+        throw std::logic_error("shared reader admission unavailable");
     ++status_.received;
     if (accepted == roboframe::Admission::replaced) ++status_.replaced;
 }
-void ReadOnlyPlannerComponent::Collect() const {
+void SharedMapReader::Collect() const {
     if (!execution_) return;
     Execution::Result result;
     while (execution_->Take(result)) {
@@ -84,18 +83,18 @@ void ReadOnlyPlannerComponent::Collect() const {
     status_.peak_retained = work.peak;
     status_.pending = work.queued != 0; status_.active_read = work.active != 0;
 }
-ReadStatus ReadOnlyPlannerComponent::status() const {
+ReadStatus SharedMapReader::status() const {
     std::lock_guard<std::mutex> lock(mutex_);
     Collect();
     return status_;
 }
-void ReadOnlyPlannerComponent::WaitIdle() {
+void SharedMapReader::WaitIdle() {
     std::shared_ptr<Execution> execution;
     { std::lock_guard<std::mutex> lock(mutex_); execution = execution_; }
     if (execution) execution->WaitIdle();
     std::lock_guard<std::mutex> lock(mutex_); Collect();
 }
-ReadStatus ReadOnlyPlannerComponent::Read(const Input& input, const roboframe::Cancellation& cancel) const {
+ReadStatus SharedMapReader::Read(const Input& input, const roboframe::Cancellation& cancel) const {
     ReadStatus result;
     result.checksum = Hash(*input.map, input.scan.get());
     cancel.WaitFor(read_delay_);
@@ -106,4 +105,4 @@ ReadStatus ReadOnlyPlannerComponent::Read(const Input& input, const roboframe::C
     result.scan_data_address = input.scan ? reinterpret_cast<std::uintptr_t>(input.scan->hits.data()) : 0;
     return result;
 }
-} // namespace planner
+} // namespace test_support

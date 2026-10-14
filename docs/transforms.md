@@ -14,7 +14,7 @@ odom→map 对应 T_map_odom；组合为 `T_map_base = T_map_odom * T_odom_base`
 | lidar-map | 同时接收只读 scan 与同采集时刻的 odom；有录制参考 pose 的帧才发布 T_map_odom | components/lidar-map/include/lidar_map/recorded_lidar_map_component.hpp |
 | integration | 缓存/插值 odom，分发同一 scan，保留最近已发布的有效校正，向 mapper 交付 ScanTransforms2D | integration/data_flow/sensor_flow.cpp、pose_buffer.hpp |
 | map-updater | 用完整 TF 投影 scan，更新导航占据图；不估计定位、不依赖 lidar-map 的私有类型 | components/map-updater/include/map_updater/occupancy_map_component.hpp |
-| map-server / planner | 保存有坐标归属的快照 / 有界异步读取共享地图与 scan | 对应具名 component 头文件 |
+| map-server / interface | 保存有坐标归属的快照 / 发布地图快照 | 对应具名 component 头文件 |
 | interface | SDK 输入的 IPC 适配，不做 TF 计算 | interface/stdio_interface.cpp |
 
 ~~~mermaid
@@ -33,7 +33,7 @@ flowchart LR
   T -->|完整 TF| U
   G -->|同一 scan 引用| U
   U --> M[不可变导航地图快照]
-  M --> R[只读 planner / map-server]
+  M --> R[interface / map-server]
 ~~~
 
 RecordedLidarMapComponent 是独立 SOURCE/PACKAGE 组件，只依赖 SDK，可自己写 main 接入。
@@ -54,7 +54,7 @@ RecordedLidarMapComponent 是独立 SOURCE/PACKAGE 组件，只依赖 SDK，可�
 - 参考 pose 要先于对应 scan 输入；迟到引用明确拒绝。参考队列最多 64 个小位姿，scan/odom 等待队列仍有界。
   被丢弃 scan 对应的引用在后续扫描到达时清理，并记录 missed_references；不无限积压。
 - odom 同步等待由 integration 负责；lidar-map 与 mapper 不各存一份大 scan。lidar-map 在受短锁保护的输入调用线程读取，mapper 在计算通道读取同一个不可变 Scan2DPtr，
-  planner 在地图发布时获得同一对象；payload 不复制。TF 只按值复制几个标量，没必要给小结构套 shared_ptr。
+  进程内消费者获得同一对象；payload 不复制。TF 只按值复制几个标量，没必要给小结构套 shared_ptr。
 - 新建图会话、取消、加载、关闭会清理对应校正上下文。加载 map 不会产生 TF 或冒充定位成功。
 - odom/lidar-map 在传感器通路内部同步接线，对外最新值交由业务 owner 的 Poll 发布；mapper 完成通过有界队列交回 owner；integration 的具名输出经 interface 变为主动事件，详见 [双向 IPC](ipc.md)。
   TF 查询/事件表示最近处理 scan 的变换，不代表当前墙钟时刻的定位健康状态。odom 独立随输入发布。
@@ -89,7 +89,6 @@ python3 tools/mapping/replay.py --dataset tf --scans 0 --finish-after 12267 --ou
 
 本次全量：910 次校正全部消费，首次定位前 168 帧跳过，融合 13,463 帧；结束建图后继续融合 1,364 帧。
 1,038 次 TF 数值检查（包含全部 910 次参考校正），最大位置误差约 3.4e-14 米，这是计算一致性，不是定位精度。
-planner 不一致读取为 0，最多保留两项；固定快照不变、保存/重载一致。回放页面与 tf-trace.json 保留证据。
 
 12 项 CTest 覆盖旋转/平移组合、异步 odom、首次定位、过期、未来引用、重置、地图坐标落盘等；
 ASan/UBSan 通过；五个组件独立 SDK-only 构建、安装包/混合构建和公开头文件隔离通过。

@@ -10,12 +10,10 @@ globalThis.BuildCatalog = {
       implemented: true, package: "MapUpdater", target: "MapUpdater::component", sourcePath: "components/map-updater" },
     { id: "map-server", name: "Map server", description: "FileMapComponent · 地图保存与加载",
       implemented: true, package: "MapServer", target: "MapServer::component", sourcePath: "components/map-server" },
-    { id: "planner", name: "Planner", description: "ReadOnlyPlannerComponent · 共享地图与 scan 读取验证",
-      implemented: true, package: "Planner", target: "Planner::component", sourcePath: "components/planner" }
   ],
   scenarios: [
     { id: "current", name: "当前产品", integration: "RobotIntegration", buildReady: true,
-      components: ["odom", "lidar-map", "map-updater", "map-server", "planner"], defaults: ["SOURCE", "SOURCE", "SOURCE", "SOURCE", "SOURCE"] }
+      components: ["odom", "lidar-map", "map-updater", "map-server"], defaults: ["SOURCE", "SOURCE", "SOURCE", "SOURCE"] }
   ],
   platforms: [
     { id: "linux-x86_64", name: "Linux x86_64 · 本机开发", buildReady: true,

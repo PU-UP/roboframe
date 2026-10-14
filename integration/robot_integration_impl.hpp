@@ -4,7 +4,6 @@
 #include <roboframe/execution.hpp>
 #include <map_server/file_map_component.hpp>
 #include <map_updater/occupancy_map_component.hpp>
-#include <planner/read_only_planner_component.hpp>
 namespace roboframe {
 // Business state belongs to the command/Poll owner. SensorFlow owns its own synchronized
 // routing state; the compute channel exclusively owns algorithm mutations while active.
@@ -23,7 +22,6 @@ struct RobotIntegration::Impl {
     void Shutdown();
     void RequireActive() const;
     void Publish(const Scan2DPtr& scan, bool force = false);
-    void WaitPlanner();
     void Poll();
     void CompleteFinish();
     void OnMapResult(MapExecution::Result result);
@@ -41,7 +39,6 @@ struct RobotIntegration::Impl {
     MapExecution computation_;
     SensorFlow inputs_;
     map_server::FileMapComponent store_;
-    planner::ReadOnlyPlannerComponent planner_{std::chrono::milliseconds(5)};
     const GridFrame frame_;
     std::uint64_t generation_ = 0, completed_ = 0, copied_bytes_ = 0;
     GridSnapshot computed_, frozen_, live_;

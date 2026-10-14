@@ -56,7 +56,7 @@ python3 tests/intel_reference_check.py build-product/corrected-reference/live.rf
 - 有效返回为 `0.01 <= r < 20 m`；远读数丢弃，不压成 20 米障碍，不伪造无返回清空射线。
 
 ## 接入边界与规划使用
-继续复用 Python → IPC → interface → integration → odom透传 / map-updater → map-server / 只读planner。
+继续复用 Python → IPC → interface → integration → odom透传 / map-updater → map-server。
 通过录制 lidar-map 后端模拟定位输出，没有增加真实 SLAM、导航或 BT 实现。
 
 SDK 4.0 起接入独立 lidar-map 和完整 TF：raw odom 与 corrected pose 分开输入，地图显式标记 map 坐标。

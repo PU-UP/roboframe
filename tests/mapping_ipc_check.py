@@ -22,14 +22,7 @@ class MappingIPC(unittest.TestCase):
                     host.write(f'REQ {host.ident} {command}')
                     break
                 body = command.strip()
-                if body == 'WAIT_PLANNER':
-                    import time
-                    for _ in range(1000):
-                        response = host.req(body)
-                        if not response.startswith('ERROR'): break
-                        time.sleep(0.001)
-                else:
-                    response = host.req(body)
+                response = host.req(body)
                 lines.append(response)
                 if body == 'QUIT': break
                 if body.split()[0] in ('ODOM', 'SCAN') and not response.startswith('ERROR'):
@@ -82,24 +75,18 @@ class MappingIPC(unittest.TestCase):
             self.assertEqual(list(pathlib.Path(directory).iterdir()), [])
             self.assertEqual(self.run_session('QUIT\n', directory), ['READY roboframe-v3', 'BYE'])
 
-    def test_live_map_and_shared_reader(self):
+    def test_live_map_preserves_baseline(self):
         with tempfile.TemporaryDirectory() as directory:
             commands = CONFIG + 'BEGIN 1\nODOM 0 0 0 0\nSCAN 0 1 2 0\nFINISH\nSAVE baseline\n'
             for i in range(1, 40):
                 commands += f'ODOM {i * 100000} 0 0 0\nSCAN {i * 100000} 1 3 0\n'
-            commands += 'WAIT_PLANNER\nRESOURCES\nSAVE preserved\nSNAPSHOT live\nQUIT\n'
+            commands += 'RESOURCES\nSAVE preserved\nSNAPSHOT live\nQUIT\n'
             lines = self.run_session(commands, directory)
             self.assertFalse(any(line.startswith('ERROR') for line in lines))
             record = next(line for line in lines if line.startswith('RESOURCES '))
             resources = {key: int(value) for key, value in
                          (field.split('=') for field in record.split()[1:])}
             self.assertEqual(resources['live_updates'], 39)
-            self.assertEqual(resources['planner_revision'], 40)
-            self.assertEqual(resources['planner_inconsistent'], 0)
-            self.assertLessEqual(resources['planner_peak_retained'], 2)
-            self.assertEqual(resources['planner_pending'] + resources['planner_active'], 0)
-            self.assertEqual(resources['planner_completed'] + resources['planner_replaced'],
-                             resources['planner_received'])
             root = pathlib.Path(directory)
             self.assertEqual((root / 'baseline.rfgrid').read_bytes(), (root / 'preserved.rfgrid').read_bytes())
             self.assertNotEqual((root / 'baseline.rfgrid').read_bytes(), (root / 'live.rfgrid').read_bytes())

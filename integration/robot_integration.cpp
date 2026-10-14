@@ -52,7 +52,6 @@ std::size_t RobotIntegration::pending() const {
 GridSnapshot RobotIntegration::map() const { return Configured().frozen_; }
 GridSnapshot RobotIntegration::live_map() const { return Configured().live_; }
 DataFlowStatus RobotIntegration::data_flow_status() const { return Configured().Resources(); }
-void RobotIntegration::WaitPlanner() { Configured().WaitPlanner(); }
 
 RobotIntegration::Impl::Impl(MappingOptions options, std::string directory, ProductOutputs& outputs, std::chrono::milliseconds delay)
     : outputs_(outputs), grid_(options.grid),
@@ -72,8 +71,7 @@ RobotIntegration::Impl::Impl(MappingOptions options, std::string directory, Prod
     CheckComponent(lidar_map::GetComponentInfo());
     CheckComponent(map_updater::GetComponentInfo());
     CheckComponent(map_server::GetComponentInfo());
-    CheckComponent(planner::GetComponentInfo());
-    planner_.Activate(); store_.Activate(); grid_.Activate();
+    store_.Activate(); grid_.Activate();
     active_ = true;
     ROBO_LOG_INFO("integration") << "sensor routing and bounded compute active; SDK " << ToString(sdk_version);
 }
@@ -95,7 +93,7 @@ void RobotIntegration::Impl::Shutdown() {
         status_.phase = MappingPhase::idle;
     } else if (updating_) resources_.live_dropped += abandoned;
     computation_.Stop(); completed_ = input.submitted;
-    planner_.Deactivate(); grid_.Deactivate(); store_.Deactivate();
+    grid_.Deactivate(); store_.Deactivate();
     latest_scan_.reset(); updating_ = false; active_ = false;
 }
 } // namespace roboframe

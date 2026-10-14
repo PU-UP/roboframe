@@ -173,14 +173,6 @@ bool StdioInterface::Dispatch(const std::string& line) {
         out << " copied_bytes=" << s.copied_bytes;
         out << " map_bytes=" << s.map_bytes;
         out << " table_bytes=" << s.table_bytes;
-        out << " planner_received=" << s.planner_received;
-        out << " planner_completed=" << s.planner_completed;
-        out << " planner_replaced=" << s.planner_replaced;
-        out << " planner_pending=" << s.planner_pending;
-        out << " planner_active=" << s.planner_active;
-        out << " planner_peak_retained=" << s.planner_peak_retained;
-        out << " planner_inconsistent=" << s.planner_inconsistent;
-        out << " planner_revision=" << s.planner_revision;
         Send(out.str());
         return true;
     }
@@ -243,7 +235,6 @@ bool StdioInterface::Dispatch(const std::string& line) {
             if (command == "FINISH") { Invoke("FINISH", inputs_.mapping.finish); Send("ACCEPTED FINISH"); return true; }
             else if (command == "CANCEL") Invoke("CANCEL", inputs_.mapping.cancel);
             else if (command == "STATUS") { Send(Status()); return true; }
-            else if (command == "WAIT_PLANNER") Invoke("WAIT_PLANNER", inputs_.diagnostics.check_readers_idle);
             else throw std::invalid_argument("unknown command");
         }
     }

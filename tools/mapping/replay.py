@@ -266,7 +266,7 @@ class Host:
         deadline = time.monotonic() + 30
         while True:
             state = self.resources()
-            if not state['compute_retained'] and not state['planner_pending'] and not state['planner_active']:
+            if not state['compute_retained']:
                 return
             if time.monotonic() >= deadline:
                 raise TimeoutError('compute drain timeout')
@@ -447,14 +447,6 @@ def run(args):
         host.send('SAVE frozen')
         host.send('SNAPSHOT live')
         live_grid = frame('live', scan_number)
-        while True:
-            try:
-                host.send('WAIT_PLANNER')
-                break
-            except RuntimeError as error:
-                if 'pending' not in str(error):
-                    raise
-                host.wait_idle()
         resources = host.resources()
         resource_samples.append(dict(after_scan=scan_number, **resources))
         original = (args.output / 'final.rfgrid').read_bytes()
@@ -465,10 +457,7 @@ def run(args):
                 after['ignored'] != 0 or after['used_rays'] == 0):
             raise RuntimeError('workflow accounting mismatch')
         if (resources['live_updates'] != count - finish or resources['live_dropped'] or live_grid['revision'] != count - after['dropped'] or
-                resources['planner_inconsistent'] or resources['planner_peak_retained'] > 2 or
-                resources['planner_pending'] or resources['planner_active'] or
-                resources['planner_revision'] != live_grid['revision'] or
-                resources['planner_completed'] + resources['planner_replaced'] != resources['planner_received']):
+                resources['compute_retained']):
             raise RuntimeError('shared-resource or continued-update check failed')
         for role, expected in [('baseline', final_grid), ('live', live_grid)]:
             received = host.map(role)
@@ -528,7 +517,7 @@ def run(args):
     html = Path(__file__).with_name('replay.html').read_text()
     (args.output / 'replay.html').write_text(html.replace('__REPORT__', json.dumps(report).replace('<', '\\u003c')))
     summary_path.write_text(json.dumps(summary, indent=2) + '\n')
-    print('PASS: baseline preserved, live updates, bounded shared planner reads, save/reload', flush=True)
+    print('PASS: baseline preserved, live updates, immutable shared snapshots, save/reload', flush=True)
     print(json.dumps(resources, indent=2), flush=True)
     print(args.output.resolve() / 'replay.html')
 

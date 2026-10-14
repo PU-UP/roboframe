@@ -1,5 +1,4 @@
 #pragma once
-#include <planner/version.hpp>
 #include <roboframe/component.hpp>
 #include <roboframe/grid.hpp>
 #include <roboframe/scan2d.hpp>
@@ -9,8 +8,7 @@
 #include <cstdint>
 #include <mutex>
 
-namespace planner {
-roboframe::ComponentInfo GetComponentInfo();
+namespace test_support {
 struct ReadStatus {
     std::uint64_t received = 0, completed = 0, replaced = 0, peak_retained = 0, inconsistent = 0;
     std::uint64_t revision = 0, checksum = 0;
@@ -20,10 +18,10 @@ struct ReadStatus {
 // Resource-validation implementation: reads immutable inputs; no path planning.
 // Lifecycle changes have one owner. Submit/status/WaitIdle are thread-safe.
 // At most one active read + one latest pending input; Submit never waits for a read.
-class ReadOnlyPlannerComponent final : public roboframe::Component {
+class SharedMapReader final : public roboframe::Component {
 public:
-    explicit ReadOnlyPlannerComponent(std::chrono::milliseconds read_delay = std::chrono::milliseconds(0));
-    ~ReadOnlyPlannerComponent() override;
+    explicit SharedMapReader(std::chrono::milliseconds read_delay = std::chrono::milliseconds(0));
+    ~SharedMapReader() override;
     void Activate() override;
     void Deactivate() override;
     roboframe::Lifecycle lifecycle() const override;
@@ -44,4 +42,4 @@ private:
     mutable ReadStatus status_;
     bool active_ = false;
 };
-} // namespace planner
+} // namespace test_support

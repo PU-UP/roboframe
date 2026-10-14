@@ -39,7 +39,6 @@ public:
     GridSnapshot map() const; // Saved baseline captured by FINISH or LOAD.
     GridSnapshot live_map() const;
     DataFlowStatus data_flow_status() const;
-    void WaitPlanner(); // Nonblocking idle check; throws while computation/reading is pending.
 private:
     struct Impl;
     Impl& Configured() const;

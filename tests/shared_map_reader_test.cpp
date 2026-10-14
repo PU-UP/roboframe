@@ -1,10 +1,10 @@
-#include <planner/read_only_planner_component.hpp>
+#include "tests/support/shared_map_reader.hpp"
 #include <stdexcept>
 #include <thread>
 #include <vector>
-void Check(bool ok) { if (!ok) throw std::runtime_error("planner resource check failed"); }
+void Check(bool ok) { if (!ok) throw std::runtime_error("shared reader resource check failed"); }
 int main() {
-    planner::ReadOnlyPlannerComponent reader(std::chrono::milliseconds(50));
+    test_support::SharedMapReader reader(std::chrono::milliseconds(50));
     reader.Activate();
     auto scan = std::make_shared<const roboframe::Scan2D>(1,
         std::vector<roboframe::ScanPoint2D>(2048, {1, 0}));
