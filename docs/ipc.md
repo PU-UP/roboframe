@@ -94,7 +94,7 @@ FINISH 返回 ACCEPTED，进入 finishing，直到 finished/failed；完成前 S
 | EVENT 内容 | 含义与策略 |
 |---|---|
 | ODOM stamp x y yaw | 独立 odom 输出；无需处于建图会话，也无需 scan 到达。保留最新待发值 |
-| CORRECTION stamp x y yaw | lidar-map 的 T_map_odom 输出。保留最新待发值 |
+| CORRECTION stamp x y yaw | slam 的 T_map_odom 输出。保留最新待发值 |
 | TF valid scan_stamp correction_stamp x y yaw / TF unavailable | 最近处理 scan 的 T_map_base 或该链不可用；不是墙钟定位健康状态。保留最新待发值 |
 | MAP generation revision stamp frame width height resolution origin_x origin_y | 当前 live 快照已更新；保留最新通知 |
 | MAPPING kind request_id session generation integrated dropped name | started/progress/finishing/finished/failed/canceled/saved/loaded/stopped；只有 progress 可合并 |
@@ -145,7 +145,7 @@ Python 有一个持续接收线程和有界响应队列，事件写入 JSONL，�
 回放使用 DATA 输入、带 ID 的业务请求，验证主动事件出现，并通过 GET_MAP 对比基准/实时地图与保存文件的全部字段和栅格。
 stdio_publication_test 使用真实 4 KiB 管道，覆盖无查询发布、退订、快照/地图上下文、暂时慢读、持续不读、
 可靠队列溢出、读端断连、EOF、QUIT 排空期限和非法/截断输入；mapping_check 验证进程内回调收到共享快照。
-SDK 5.0 增加 finishing/failed 与计算通道诊断；公开状态布局及完成语义改变，组件包应重建。
+SDK 7.0 已更新子图与资源契约，旧组件包需要重建。
 最新执行模型、容量、过载及验收见 [执行边界](execution.md)。
 
-SDK 5.1 的并发输入和统一执行机制见 [执行模型](execution.md)。传感器遥测在 Poll 前可合并为最新值。
+当前并发输入和统一执行机制见 [执行模型](execution.md)。传感器遥测在 Poll 前可合并为最新值。

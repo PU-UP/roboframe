@@ -1,4 +1,4 @@
-# Roboframe SDK 5.2
+# Roboframe SDK 7.0
 interface、integration、component 共用的公开契约和小型基础设施。
 SDK 位于主目录的 sdk/，与 interfaces/、products/、components/ 并列；
 后两种复数目录是未来多产品布局，当前不为占位而搬动目录或创建空产品。
@@ -80,8 +80,7 @@ component 开发者不维护 SDK 版本、组件发布数字或独立 contract_v
 SDK 2.0 已移除独立契约版本；SDK 3.0 将 Grid::cells 改为分块写时复制，
 Scan2D 改为只能移动而不能复制。SDK 4.0 增加明确的 TF 数据结构、GridSpec.frame 和 mapper 完整变换入参。
 这些 major 版本的公开接口变化要求旧组件开发包重建。SDK 4.1 仅新增 outputs.hpp，未修改现有组件数据布局。
-SDK 5.0 增加 finishing/failed 和计算通道资源字段，改变公开状态布局及 FINISH 完成语义；旧包重建。
-SDK 5.1 新增通用执行通道；5.2 新增 inputs.hpp，不改变现有数据布局，产品选择同步更新。
+SDK 7.0 包含 submap2d.hpp 节点/子图语义与新的资源布局。MapUpdater 改为子图输入，旧 major 包必须重建；组件源码身份和编译 SDK 仍由构建自动记录。
 组件的编译 SDK 仍自动记录，无需组件开发者维护额外版本字段。
 Scan2DPtr 和 GridSnapshot 跨模块只读共享；具体所有权与更新约束见
 [数据共享说明](../docs/data-sharing.md)。
@@ -123,4 +122,4 @@ cmake --install build-sdk --prefix /tmp/roboframe-sdk
 
 TF 契约见 [坐标链路](../docs/transforms.md)：TimedPose2D 固定为 T_odom_base，不能塞入全局校正 pose。
 
-SDK 5.1 新增 execution.hpp；具体使用、并发边界和生命周期见 [执行模型](../docs/execution.md)。
+execution.hpp 提供按需执行边界；具体使用、并发边界和生命周期见 [执行模型](../docs/execution.md)。

@@ -5,7 +5,8 @@
 #include <roboframe/transforms2d.hpp>
 #include <roboframe/execution.hpp>
 #include <odom/passthrough_odom_component.hpp>
-#include <lidar_map/recorded_lidar_map_component.hpp>
+#include <slam/recorded_slam_component.hpp>
+#include <posegraph/pose_graph_component.hpp>
 #include <functional>
 #include <mutex>
 namespace roboframe {
@@ -45,6 +46,7 @@ public:
     State Close(); // Discard pending inputs and invalidate TF; return pre-close accounting.
     void Shutdown();
     State status() const;
+    PoseNode2D Node(std::uint64_t generation, std::uint64_t id) const;
     Events TakeEvents(); // Product publication only; downstream routing already happened at ingress.
 private:
     void Drain(bool flush);
@@ -56,7 +58,9 @@ private:
     const Sink sink_;
     PoseBuffer poses_;
     odom::PassthroughOdomComponent odometry_;
-    lidar_map::RecordedLidarMapComponent lidar_;
+    slam::RecordedSlamComponent slam_;
+    posegraph::PoseGraphComponent graph_;
+    TimedPose2D matched_odom_;
     std::deque<Scan2DPtr> pending_;
     enum class AdmissionState { closed, accepting, paused };
     AdmissionState admission_ = AdmissionState::closed;
@@ -64,8 +68,7 @@ private:
     Counts counts_;
     DataFlowStatus resources_;
     TransformStatus2D transforms_;
-    MapCorrection2D correction_;
-    bool has_correction_ = false, closed_ = false;
+    bool closed_ = false;
     std::int64_t last_scan_ = -1;
     Events events_;
 };

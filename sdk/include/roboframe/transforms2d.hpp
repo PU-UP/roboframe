@@ -17,7 +17,7 @@ struct MapPose2D { std::int64_t stamp_us = 0; Pose2D pose; };
 struct MapCorrection2D { std::int64_t stamp_us = 0; Pose2D pose; }; // T_map_odom
 struct ScanTransforms2D {
     TimedPose2D odom_from_base;
-    MapCorrection2D map_from_odom; // Latest causal correction; integration enforces maximum age.
+    MapCorrection2D map_from_odom; // Latest causal correction; PoseGraph enforces maximum age.
 };
 inline void ValidateTransforms(const ScanTransforms2D& tf) {
     ValidatePose(tf.odom_from_base);

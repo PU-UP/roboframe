@@ -6,6 +6,7 @@
 
 namespace odom {
 roboframe::ComponentInfo GetComponentInfo();
+// Framework example: future DRComponent/VIOComponent may independently provide the same pose semantics.
 // Input/output: acquisition timestamp in microseconds, T_odom_base in metres/radians.
 // Output is synchronous; its reference lasts only for this call. Serialize all calls.
 // The sink must not reenter/destroy this component. If it throws, the sample stays consumed.

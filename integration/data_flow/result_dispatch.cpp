@@ -27,7 +27,8 @@ DataFlowStatus RobotIntegration::Impl::Resources() const {
     auto task = status_;
     CountInputs(state.counts, task, result);
     const auto& input = state.resources;
-    result.lidar_scans = input.lidar_scans; result.correction_outputs = input.correction_outputs;
+    result.pose_nodes = input.pose_nodes; result.history_rejected = input.history_rejected;
+    result.slam_scans = input.slam_scans; result.correction_outputs = input.correction_outputs;
     result.missed_references = input.missed_references; result.tf_dropped = input.tf_dropped;
     result.compute_rejected = input.compute_rejected;
     const auto work = computation_.status();

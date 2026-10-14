@@ -4,12 +4,13 @@
 #include <roboframe/execution.hpp>
 #include <map_server/file_map_component.hpp>
 #include <map_updater/occupancy_map_component.hpp>
+#include <localmapbuilder/local_map_component.hpp>
 namespace roboframe {
 // Business state belongs to the command/Poll owner. SensorFlow owns its own synchronized
 // routing state; the compute channel exclusively owns algorithm mutations while active.
 struct RobotIntegration::Impl {
     struct ScanWork { Scan2DPtr scan; ScanTransforms2D transforms; };
-    struct MapResult { GridSnapshot map; map_updater::Update update; std::uint64_t copied_bytes = 0; };
+    struct MapResult { GridSnapshot map; map_updater::Update update; std::uint64_t copied_bytes = 0; std::size_t submaps = 0, points = 0; };
     using MapExecution = ExecutionChannel<ScanWork, MapResult>;
     Impl(MappingOptions options, std::string directory, ProductOutputs& outputs, std::chrono::milliseconds delay);
     ~Impl();
@@ -35,6 +36,8 @@ struct RobotIntegration::Impl {
     void EmitMapping(MappingEventKind kind, const std::string& name = {});
     ProductOutputs& outputs_;
     map_updater::OccupancyMapComponent grid_;
+    localmapbuilder::LocalMapComponent local_;
+    std::int64_t computed_correction_us_ = -1; // Compute-group owner only.
     std::uint64_t computed_generation_ = 0; // Accessed only by the compute handler.
     MapExecution computation_;
     SensorFlow inputs_;

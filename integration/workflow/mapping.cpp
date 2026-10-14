@@ -10,6 +10,7 @@ void RobotIntegration::Impl::StartMapping(std::uint64_t id) {
     resources_.live_dropped += old.pending + old.submitted - completed_;
     computation_.Reset(++generation_);
     accounted_inputs_ = inputs_.Open(generation_).counts; completed_ = 0;
+    resources_.submaps = resources_.retained_points = 0;
     computed_.reset(); copied_bytes_ = 0; frozen_.reset(); live_.reset(); latest_scan_.reset();
     last_publication_us_ = -1; updating_ = true;
     status_ = {}; status_.session = id; status_.phase = MappingPhase::mapping;
@@ -104,6 +105,7 @@ void RobotIntegration::Impl::OnMapResult(MapExecution::Result result) {
         if (result.error) std::rethrow_exception(result.error);
         if (result.canceled) throw std::runtime_error("unexpected current-session cancellation");
         computed_ = std::move(result.output.map); copied_bytes_ = result.output.copied_bytes;
+        resources_.submaps = result.output.submaps; resources_.retained_points = result.output.points;
         latest_scan_ = std::move(result.input.scan);
         if (mapping) {
             ++status_.integrated; status_.used_rays += result.output.update.used_rays;

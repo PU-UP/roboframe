@@ -2,18 +2,18 @@
 #include <roboframe/component.hpp>
 #include <roboframe/transforms2d.hpp>
 #include <roboframe/scan2d.hpp>
-#include <lidar_map/version.hpp>
+#include <slam/version.hpp>
 #include <deque>
 #include <functional>
 
-namespace lidar_map {
+namespace slam {
 roboframe::ComponentInfo GetComponentInfo();
 // Recorded backend, not SLAM. Reference poses are injected before their matching scans.
 // Calls/output are synchronous and serialized; callbacks must not reenter this component.
-class RecordedLidarMapComponent final : public roboframe::Component {
+class RecordedSlamComponent final : public roboframe::Component {
 public:
-    using Output = std::function<void(const roboframe::MapCorrection2D&)>;
-    explicit RecordedLidarMapComponent(Output output);
+    using Output = std::function<void(const roboframe::MapPose2D&)>;
+    explicit RecordedSlamComponent(Output output);
     void Activate() override { lifecycle_ = roboframe::Lifecycle::active; }
     void Deactivate() override { Reset(); lifecycle_ = roboframe::Lifecycle::inactive; }
     roboframe::Lifecycle lifecycle() const override { return lifecycle_; }
@@ -30,4 +30,4 @@ private:
     std::int64_t last_scan_us_ = -1, last_reference_us_ = -1;
     std::uint64_t received_ = 0, published_ = 0, missed_ = 0;
 };
-} // namespace lidar_map
+} // namespace slam

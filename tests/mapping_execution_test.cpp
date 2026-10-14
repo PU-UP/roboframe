@@ -48,12 +48,13 @@ int main() {
         robot.StartMapping(2);
         robot.Poll(); // Already-completed old results must not reach the new session.
         Check(robot.data_flow_status().stale_results == 8 && maps == 0 && odoms == 1);
-        for (const auto& input : inputs) Check(input.expired());
+        // Atlas retains scan history until the next compute generation resets it.
         Check(robot.mapping_status().integrated == 0 && robot.pending() == 0);
         robot.PushOdometry({1000, {3, 0, 0}}); robot.PushScan(Scan(1000));
         robot.FinishMapping();
         Check(robot.mapping_status().phase == MappingPhase::finishing);
         Until([&] { robot.Poll(); return robot.mapping_status().phase == MappingPhase::ready; });
+        for (const auto& input : inputs) Check(input.expired());
         Check(robot.map()->revision == 1 && robot.map()->cells[5 * 20 + 10] == 0);
         Check(robot.map()->cells[5 * 20 + 7] == 205); // Previous session's hit never leaked.
         Check(robot.mapping_status().integrated == 1);
@@ -78,6 +79,22 @@ int main() {
         start = Clock::now(); robot.Shutdown();
         Check(Clock::now() - start < std::chrono::milliseconds(500));
         Check(robot.data_flow_status().compute_retained == 0);
+    }
+    {
+        RobotIntegration robot(directory, std::chrono::milliseconds(5000));
+        robot.Configure({{30, 20, 1, -5, -5, GridFrame::map}, 100, 20});
+        TransformStatus2D latest;
+        ProductOutputs output;
+        output.transforms = [&](const TransformStatus2D& tf) { latest = tf; };
+        robot.SetOutputs(output); robot.StartMapping(1);
+        robot.PushOdometry({0, {}}); robot.PushMapReference({0, {10, 0, 0}}); robot.PushScan(Scan(0));
+        Until([&] { return robot.data_flow_status().compute_active == 1; });
+        robot.PushOdometry({1, {1, 0, 0}}); robot.Poll();
+        Check(latest.valid && MapFromBase(latest.transforms).x == 11);
+        Check(robot.mapping_status().integrated == 0); // Current localization did not wait for the atlas.
+        robot.PushOdometry({21, {2, 0, 0}}); robot.Poll();
+        Check(!latest.valid); // Expiry is published even when no new scan arrives.
+        robot.CancelMapping(); robot.Shutdown();
     }
     Check(::rmdir(directory) == 0);
 }

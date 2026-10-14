@@ -164,12 +164,13 @@ bool StdioInterface::Dispatch(const std::string& line) {
             << " compute_results=" << s.compute_results << " compute_retained=" << s.compute_retained
             << " compute_peak_retained=" << s.compute_peak_retained << " compute_rejected=" << s.compute_rejected
             << " stale_results=" << s.stale_results;
-        out << " lidar_scans=" << s.lidar_scans << " correction_outputs=" << s.correction_outputs
+        out << " slam_scans=" << s.slam_scans << " correction_outputs=" << s.correction_outputs
             << " missed_references=" << s.missed_references << " tf_dropped=" << s.tf_dropped;
         out << " shared_scans=" << s.shared_scans;
         out << " live_updates=" << s.live_updates;
         out << " live_dropped=" << s.live_dropped;
         out << " publications=" << s.publications;
+        out << " submaps=" << s.submaps << " retained_points=" << s.retained_points << " pose_nodes=" << s.pose_nodes << " history_rejected=" << s.history_rejected;
         out << " copied_bytes=" << s.copied_bytes;
         out << " map_bytes=" << s.map_bytes;
         out << " table_bytes=" << s.table_bytes;

@@ -1,4 +1,4 @@
-#include <map_updater/occupancy_map_component.hpp>
+#include "../src/occupancy_raster.hpp"
 #include <stdexcept>
 #include <algorithm>
 void Check(bool ok) { if (!ok) throw std::runtime_error("grid check failed"); }
@@ -6,7 +6,7 @@ template<class F> void Reject(F f) {
     bool caught = false; try { f(); } catch (const std::exception&) { caught = true; } Check(caught);
 }
 int main() {
-    map_updater::OccupancyMapComponent grid({10, 10, 1, 0, 0});
+    map_updater::OccupancyRaster grid({10, 10, 1, 0, 0});
     auto scan = std::make_shared<const roboframe::Scan2D>(roboframe::Scan2D{1, {{3, 0}}});
     Reject([&] { grid.PushScan(scan, {{1, {1.5, 1.5, 0}}, {1, {}}}); });
     grid.Activate();
@@ -53,7 +53,7 @@ int main() {
     Check(grid.Snapshot()->cells[41] == 0); // +x in base becomes +y in odom.
     grid.Reset();
     Check(map->cells[14] == 0 && grid.Snapshot()->cells[14] == 205);
-    map_updater::OccupancyMapComponent global({20,20,1,0,0,roboframe::GridFrame::map});
+    map_updater::OccupancyRaster global({20,20,1,0,0,roboframe::GridFrame::map});
     global.Activate(); global.Reset();
     global.PushScan(scan, {{1,{1.5,1.5,0}}, {0,{10,0,half_pi}}});
     Check(global.Snapshot()->cells[4*20+8]==0); // T_map_base=(8.5,1.5,pi/2), hit=(8.5,4.5).

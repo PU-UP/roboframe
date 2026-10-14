@@ -56,11 +56,11 @@ python3 tests/intel_reference_check.py build-product/corrected-reference/live.rf
 - 有效返回为 `0.01 <= r < 20 m`；远读数丢弃，不压成 20 米障碍，不伪造无返回清空射线。
 
 ## 接入边界与规划使用
-继续复用 Python → IPC → interface → integration → odom透传 / map-updater → map-server。
-通过录制 lidar-map 后端模拟定位输出，没有增加真实 SLAM、导航或 BT 实现。
+继续复用 Python → IPC → interface → integration → odom / SLAM / PoseGraph / LocalMapBuilder / MapUpdater → MapServer。
+通过 RecordedSlamComponent 模拟修正位姿输出，没有增加真实 SLAM、导航或 BT 实现。
 
-SDK 4.0 起接入独立 lidar-map 和完整 TF：raw odom 与 corrected pose 分开输入，地图显式标记 map 坐标。
-`--dataset corrected` 回放匹配的 910 帧，`--dataset tf` 回放全部原始扫描并稀疏校正；两者通过 lidar-map 计算 T_map_odom。
+当前接入独立 SLAM、PoseGraph、LocalMapBuilder 与完整 TF：raw odom 与 corrected pose 分开输入，地图显式标记 map 坐标。
+`--dataset corrected` 回放匹配的 910 帧，`--dataset tf` 回放全部原始扫描并稀疏校正；两者通过 SLAM 输出修正 pose，由 PoseGraph 计算 T_map_odom。
 具体运行、时间有效性和 RFGRID2 兼容说明见 [TF 数据链路](../../docs/transforms.md)。
 下面保留的是前一轮参考地图验收数值；旧输出 RFGRID1 没有 map 标签，后续应重新生成，不能混用原始 odom 坐标。
 

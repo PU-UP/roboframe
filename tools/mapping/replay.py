@@ -29,8 +29,8 @@ DATASETS = {
                       label='Intel corrected-log / publisher corrected poses', frame='corrected_reference'),
 }
 
-DATASETS['tf'] = dict(DATASETS['raw'], label='Intel raw odom + sparse lidar-map correction',
-                      pose_source='Raw paired odom; lidar-map computes T_map_odom from matched recorded map poses',
+DATASETS['tf'] = dict(DATASETS['raw'], label='Intel raw odom + sparse slam correction',
+                      pose_source='Raw paired odom; slam computes T_map_odom from matched recorded map poses',
                       frame='map')
 
 
@@ -457,7 +457,9 @@ def run(args):
                 after['ignored'] != 0 or after['used_rays'] == 0):
             raise RuntimeError('workflow accounting mismatch')
         if (resources['live_updates'] != count - finish or resources['live_dropped'] or live_grid['revision'] != count - after['dropped'] or
-                resources['compute_retained']):
+                resources['compute_retained'] or resources['submaps'] > 4096 or
+                resources['retained_points'] > 4000000 or resources['pose_nodes'] > 32768 or
+                resources['history_rejected']):
             raise RuntimeError('shared-resource or continued-update check failed')
         for role, expected in [('baseline', final_grid), ('live', live_grid)]:
             received = host.map(role)
@@ -512,7 +514,7 @@ def run(args):
         (args.output / 'tf-trace.json').write_text(json.dumps(tf_trace, indent=2) + '\n')
         expected_refs = sum('map_reference' in scan for scan in selected)
         if resources['correction_outputs'] != expected_refs or resources['missed_references']:
-            raise RuntimeError('recorded correction not consumed by lidar-map')
+            raise RuntimeError('recorded correction not consumed by slam')
     report = dict(summary=summary, frames=frames, trajectory=trajectory, resource_samples=resource_samples)
     html = Path(__file__).with_name('replay.html').read_text()
     (args.output / 'replay.html').write_text(html.replace('__REPORT__', json.dumps(report).replace('<', '\\u003c')))

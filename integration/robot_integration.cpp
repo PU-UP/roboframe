@@ -58,20 +58,30 @@ RobotIntegration::Impl::Impl(MappingOptions options, std::string directory, Prod
       computation_(compute_capacity, [this, delay](const ScanWork& work, const Cancellation& cancel) {
           if (!cancel.WaitFor(delay)) return MapResult{};
           if (computed_generation_ != cancel.generation()) {
-              grid_.Reset(); computed_generation_ = cancel.generation();
+              grid_.Reset(); local_.Reset(); computed_correction_us_ = -1; computed_generation_ = cancel.generation();
           }
-          const auto update = grid_.PushScan(work.scan, work.transforms, [&] { return cancel.canceled(); });
-          return MapResult{grid_.Snapshot(), update, grid_.copied_bytes()};
+          if (!grid_.Contains(MapFromBase(work.transforms)))
+              throw std::out_of_range("robot outside configured grid");
+          const auto node_id = static_cast<std::uint64_t>(work.scan->stamp_us) + 1;
+          const auto correction_stamp = work.transforms.map_from_odom.stamp_us;
+          const bool new_anchor = frame_ == GridFrame::map && correction_stamp != computed_correction_us_;
+          const auto submap = local_.PushScan(work.scan, work.transforms.odom_from_base, node_id, new_anchor);
+          const auto anchor = inputs_.Node(cancel.generation(), submap->anchor_id);
+          const auto update = grid_.PushSubmap(submap, anchor, [&] { return cancel.canceled(); });
+          computed_correction_us_ = correction_stamp;
+          return MapResult{grid_.Snapshot(), update, grid_.copied_bytes(), grid_.submap_count(), grid_.retained_points()};
       }), inputs_({options.grid.frame, options.max_pose_gap_us, options.max_correction_age_us},
                   [this](std::uint64_t generation, Scan2DPtr scan, ScanTransforms2D transforms) {
           return computation_.Submit(generation, {std::move(scan), transforms});
       }), store_(std::move(directory)), frame_(options.grid.frame) {
     if (delay.count() < 0 || delay.count() > 5000) throw std::invalid_argument("invalid compute test delay");
     CheckComponent(odom::GetComponentInfo());
-    CheckComponent(lidar_map::GetComponentInfo());
+    CheckComponent(slam::GetComponentInfo());
+    CheckComponent(posegraph::GetComponentInfo());
+    CheckComponent(localmapbuilder::GetComponentInfo());
     CheckComponent(map_updater::GetComponentInfo());
     CheckComponent(map_server::GetComponentInfo());
-    store_.Activate(); grid_.Activate();
+    store_.Activate(); grid_.Activate(); local_.Activate();
     active_ = true;
     ROBO_LOG_INFO("integration") << "sensor routing and bounded compute active; SDK " << ToString(sdk_version);
 }
@@ -93,7 +103,7 @@ void RobotIntegration::Impl::Shutdown() {
         status_.phase = MappingPhase::idle;
     } else if (updating_) resources_.live_dropped += abandoned;
     computation_.Stop(); completed_ = input.submitted;
-    grid_.Deactivate(); store_.Deactivate();
+    local_.Deactivate(); grid_.Reset(); grid_.Deactivate(); store_.Deactivate();
     latest_scan_.reset(); updating_ = false; active_ = false;
 }
 } // namespace roboframe

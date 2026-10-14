@@ -17,7 +17,9 @@ integration/data_flow/                 数据输入、配对、计算结果分�
 integration/workflow/                  业务流程与编排，未来按实际业务扩展
   mapping.cpp                          当前建图流程、地图操作与结果处理
 components/odom/                        PassthroughOdomComponent
-components/lidar-map/                   RecordedLidarMapComponent（录制校正后端）
+components/slam/                       RecordedSlamComponent（录制修正位姿）
+components/posegraph/                  PoseGraphComponent（坐标关系与节点）
+components/localmapbuilder/            LocalMapComponent（局部子图堆叠）
 components/map-updater/                 OccupancyMapComponent
 components/map-server/                  FileMapComponent
 tests/support/                          共享快照读取验证（不参与产品运行）
@@ -41,7 +43,7 @@ CONFIG 调用 Configure 后才创建并激活组件；失败不留下半配置�
 
 Odom 是能力；PassthroughOdomComponent 校验并透传已有 odom，不估计或修正轨迹。
 完整 TF 与录制校正接线见 [坐标链路](docs/transforms.md)。
-Map updater 更新占据地图，Map server 保存/读取地图；它们不决定何时开始建图。
+PoseGraph 管坐标/节点，LocalMapBuilder 构建局部子图，MapUpdater 将其放入全局占据地图，MapServer 保存/读取地图；它们不决定何时开始建图。
 MappingStatus 只表示建图会话，不代表组件生命周期或整个产品状态。
 同一个 integration 可以多次建图、取消、加载；其他流程可以复用相同组件，
 无需重启或新建 Integration 基类。
@@ -93,7 +95,9 @@ integration 按产品选择并接线，下游消费约定的位姿输出。
 不预建动态插件或包住所有算法的通用包装层。普通扩展组件同样可以接入，不限于预定义能力清单。
 当前 components/odom 只是透传实现的目录，不是其他里程计算法必须加入的容器；
 它跟随输入输出，当前并不保证 50 Hz，也未实现 VIO、DR 或融合。
-下一步先明确局部位姿输出契约，待真实需求出现再扩充实现与仓库。
+当前用既有数据验证这些输出契约，真实算法与仓库按需求扩充。
+
+当前五组件完整数据链、架构图、资源预算与实现限制见 [建图链路](docs/mapping.md)。
 
 ## 构建与运行
 ~~~sh
@@ -125,7 +129,7 @@ cmake --build build-odom
 ctest --test-dir build-odom --output-on-failure
 cmake --install build-odom --prefix "$PWD/build-packages"
 ~~~
-map-updater、map-server 同样构建安装。仅使用安装包：
+slam、posegraph、localmapbuilder、map-updater、map-server 同样构建安装。仅使用安装包：
 ~~~sh
 cmake -S . -B build-packaged -DROBOFRAME_USE_INSTALLED_COMPONENTS=ON \
   -DCMAKE_PREFIX_PATH="$PWD/build-packages"
@@ -142,7 +146,7 @@ BUILD_TESTING=OFF 不要求 Python，不编译测试 main。
 
 ## 版本维护
 SDK 维护者只维护 sdk/VERSION；产品维护者在 cmake/Dependencies.cmake 选择 SDK
-精确版本与组件清单。当前使用 SDK 5.1，新增算法无关的有界执行通道；旧 major 组件包需要重建。
+精确版本与组件清单。当前使用 SDK 7.0；子图/节点契约与 MapUpdater 公开输入已更新，旧 major 组件包需要重建。
 component 不再有手写 VERSION 或 contract_version，也不自行填写 SDK 要求。
 源码标识和实际编译 SDK 自动生成，安装包携带原始记录；启动时只检查 SDK 兼容性。
 源码变化自动更新指纹，SDK 与产物记录不同则按兼容规则拒绝，不篡改旧包记录。
