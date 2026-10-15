@@ -21,3 +21,12 @@ if(BUILD_TESTING)
     add_test(NAME server_template_check COMMAND server_template_check)
     set_tests_properties(server_template_check PROPERTIES TIMEOUT 10)
 endif()
+
+# Exercise the existing component directly, without constructing an Integration.
+add_executable(component_template_check component_check.cpp)
+target_link_libraries(component_template_check PRIVATE Roboframe::sdk)
+set_target_properties(component_template_check PROPERTIES CXX_STANDARD 14 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+if(BUILD_TESTING)
+    add_test(NAME component_template_check COMMAND component_template_check)
+    set_tests_properties(component_template_check PROPERTIES TIMEOUT 10)
+endif()

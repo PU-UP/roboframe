@@ -4,6 +4,27 @@ SDK 提供机制与共享数据，不包含产品协议、具体树、算法或�
 Component 的公共基类只规定 Activate、Deactivate 和 lifecycle；
 Server、ExecutionChannel、Integration、BT 都是按需选用。
 
+## Component 开发 skill
+
+[roboframe-component](skills/roboframe-component/SKILL.md) 引用现有公开接口和执行模板，
+指导组件实现、直接端口测试、独立构建与安装交付，不另建组件框架。
+可在新任务中明确要求“读取并使用 sdk/skills/roboframe-component/SKILL.md，
+按我的组件需求开发”；无需依赖这段对话或历史 demo。
+
+SDK 安装时同时放入 share/roboframe/sdk/skills/roboframe-component；
+相邻 templates 也随 SDK 安装。接口从实际选中的 SDK 头文件读取。
+这里提供技能文件，不修改用户的全局技能配置；可直接按路径要求助手读取。
+所有技能共用 [反馈规范](skills/feedback-format.md)，每次使用记录背景、验证及遇到的问题；
+实例放仓库 .roboframe/feedback/（默认不提交），状态与评价由 SDK 维护者处理。
+
+组件无需 Integration 就能测试：测试程序创建组件，传入样本，以公开结果或回调断言。
+异步线程由组件自身管理；测试等待其结果，不靠产品 Poll 驱动算法。
+直接示例见 [component_check.cpp](templates/integration/component_check.cpp)。
+多组件接线、任务与 IPC 行为才在后续 integration 测试中验证。
+源码仓库可从根目录用 -DROBOFRAME_COMPONENT=<name> 选择单个源码组件，
+与 -DROBOFRAME_PRODUCT 互斥；日常开发使用固定 build-dev，具体命令见仓库 README。
+安装包用户继续使用组件自身的独立 CMake 入口。
+
 ## 选择执行方式
 
 | 工作 | 选择 | 所有者 |

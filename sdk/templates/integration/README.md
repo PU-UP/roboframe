@@ -30,3 +30,12 @@ cmake -S /path/to/sdk/share/roboframe/sdk/templates/integration -B build-templat
 cmake --build build-template
 ctest --test-dir build-template --output-on-failure
 ~~~
+
+## 先测组件，不必装配产品
+
+component_check.cpp 直接构造已有 StreamComponent，输入测试数据并读取输出，
+覆盖在途取消、停用拒绝、重启、后台异常与后续输入恢复。
+它不构造 Integration、不调用 Poll，也不启动 BT 或 IPC。
+
+check.cpp / server_check.cpp 验证的是模板装配流程，是另外一层测试。
+真实组件应在自己的 tests 下采用直接端口测试；算法精度按组件需求选择数据和基准。

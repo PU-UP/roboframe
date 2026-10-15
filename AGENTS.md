@@ -3,6 +3,12 @@
 main 是空产品骨架；完整导航/建图实现保存在 demo 分支。
 工作前先看 git status，保留用户改动；build* 与 history 不代表当前源码。
 先读 README.md、docs/architecture.md、docs/sdk-review.md 和 sdk/README.md。
+开发或修改组件时读取 sdk/skills/roboframe-component/SKILL.md；
+组件可以直接测试，不需要先创建产品或 Integration。
+仓库内组件开发优先固定 build-dev，设置 ROBOFRAME_COMPONENT=<name> 并清空 ROBOFRAME_PRODUCT；
+不要为每次构建新建目录或改编辑器索引。独立交付检查可放临时目录。
+使用或新增 SDK skill 时遵循 sdk/skills/feedback-format.md；
+本地记录放 .roboframe/feedback/，开发 agent 只新增未读项，维护者审查时再填写状态评价。
 
 - C++14；组件只依赖 SDK/自身契约，不认识产品、BT 或其他组件。
 - 组件按需持有 Server、ExecutionChannel，或管理算法已有线程。

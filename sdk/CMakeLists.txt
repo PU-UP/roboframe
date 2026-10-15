@@ -87,3 +87,5 @@ install(FILES cmake/RoboframeComponentMetadata.cmake cmake/component_version.hpp
 
 install(DIRECTORY templates/ DESTINATION ${CMAKE_INSTALL_DATADIR}/roboframe/sdk/templates
     PATTERN "build*" EXCLUDE)
+
+install(DIRECTORY skills/ DESTINATION ${CMAKE_INSTALL_DATADIR}/roboframe/sdk/skills)

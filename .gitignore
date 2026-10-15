@@ -13,3 +13,10 @@ __pycache__/
 !/data/intel-lab/intel.log.gz
 !/data/intel-lab/intel.gfs.log.gz
 /data/**/*.part
+
+# Local SDK skill runs and maintainer feedback; never included by default.
+/.roboframe/feedback/
+
+# Untracked personal editor configuration; existing tracked files are not affected.
+/.clangd
+/.vscode/settings.json
