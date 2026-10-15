@@ -1,8 +1,0 @@
-CompileFlags:
-  CompilationDatabase: build-skeleton
-
-Index:
-  Background: Build
-
-Diagnostics:
-  UnusedIncludes: None
