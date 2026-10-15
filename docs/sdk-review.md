@@ -73,3 +73,16 @@ Server/BT 模板，以及主线程停顿、取消/异常后最终零值的独立
 新产品 SOURCE/SOURCE、PACKAGE/SOURCE、SOURCE/PACKAGE 和纯包构建均通过。
 无产品默认安装包构建、非法产品名/缺失产品/缺失源码拒绝检查也通过。
 测试组件与产品只存在于临时目录，结束即清理，没有放回 main 的空目录。
+
+## 从组件开发者视角复查
+
+- 通用 interface/stdio_channel.hpp/.cpp 未被删除，删掉的是旧产品内的协议适配器。
+  修正独立构建入口；运行库仅依赖 Threads，测试通过已安装 SDK 使用 Server。
+- tests/build_isolation_test.py 验证独立安装、生成头文件及 SOURCE/PACKAGE 接入，
+  不能代替 interface 实现，也不是无用的 demo 脚本。
+- 当前 main 的 UseServer 没有代码调用者，ServerLifecycle 注册表也是由它独占使用。
+  这是明确的清理候选；“供旧 demo 使用”的保留理由不充分，因为 demo 分支有自己的 SDK。
+  本轮只记录，未改变 SDK 公共接口。UseExecution/Dispatch 仍被 integration_test 覆盖，
+  但对应旧执行组模式，不应引导新组件从这里开始。
+- 共享数据/Server/BT 测试分别验证数据所有权、执行与编排；没有因为产品清空就删除。
+  datatype 中二维导航/地图类型是可选公开数据契约，不是 odom 组件的强制依赖。

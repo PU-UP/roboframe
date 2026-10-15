@@ -5,7 +5,7 @@ C++14 机器人算法框架骨架。main 不包含算法组件或产品实现；
 
 ~~~text
 sdk/                 可选运行机制、公共数据、BT 辅助及可编译模板
-interface/           通用 POSIX stdio 传输与独立发送线程
+interface/           通用 POSIX stdio 实现、独立发送线程与测试（未删除）
 cmake/               产品的 SOURCE/PACKAGE 组件选择
 components/          空，留给新的算法组件
 products/            空，留给新的产品接线、契约和 BT
@@ -16,6 +16,8 @@ data/                保留原始录制数据，不参与默认构建
 先读 [架构](docs/architecture.md)、[SDK 审查](docs/sdk-review.md)，
 再看 [可运行模板](sdk/templates/integration/README.md)。
 当前机制及限制见 [SDK](sdk/README.md) 和 [TODO](TODO.md)。
+通用传输的实现和独立构建方式见 [interface](interface/README.md)；
+旧 demo 的产品协议适配器保留在 demo 分支。
 
 ## 构建并亲自测试
 

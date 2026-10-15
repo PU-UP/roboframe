@@ -43,6 +43,15 @@ with tempfile.TemporaryDirectory(prefix='roboframe-skeleton-') as directory:
     run('cmake', '--install', work / 'sdk-build', '--prefix', prefix)
     passed('SDK builds/tests/installs independently of the repository')
 
+    transport = work / 'transport/interface'
+    copy(ROOT / 'interface', transport)
+    configure(transport, work / 'transport-only', '-DBUILD_TESTING=OFF',
+              '-DCMAKE_DISABLE_FIND_PACKAGE_RoboframeSDK=TRUE')
+    run('cmake', '--build', work / 'transport-only', '-j4')
+    configure(transport, work / 'transport-tests', '-DCMAKE_PREFIX_PATH=' + str(prefix))
+    verify(work / 'transport-tests')
+    passed('standalone interface builds without SDK; worker tests use installed SDK only')
+
     # This tiny build fixture is never created under repository components/products.
     component = work / 'counter'
     write(component / 'include/counter/counter.hpp',
