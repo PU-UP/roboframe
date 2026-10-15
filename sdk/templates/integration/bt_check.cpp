@@ -1,4 +1,4 @@
-#include "server_product.hpp"
+#include "bt_integration.hpp"
 #include <atomic>
 #include <thread>
 using namespace roboframe;
@@ -8,9 +8,9 @@ template<class F> void Until(F f) {
     while (!f()) { Check(std::chrono::steady_clock::now()<deadline);std::this_thread::yield(); }
 }
 int main() {
-    using Work=integration_template::ServerProduct::Work;
+    using Work=integration_template::BtIntegration::Work;
     std::atomic<unsigned> cycles{0};
-    integration_template::ServerProduct product({{},
+    integration_template::BtIntegration product({{},
         [&](const int& goal,const Work::Context&) {
             ++cycles;return Work::Step{goal ? TaskState::succeeded : TaskState::running,1,goal};
         },{}});

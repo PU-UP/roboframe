@@ -1,4 +1,4 @@
-#include "product_integration.hpp"
+#include "stream_integration.hpp"
 #include <atomic>
 #include <thread>
 #include <stdexcept>
@@ -9,19 +9,8 @@ template<class F> void Until(F ready) {
     while (!ready()) { Check(std::chrono::steady_clock::now()<deadline); std::this_thread::yield(); }
 }
 int main() {
-    InputGate gate;
-    bool invalid=false;
-    try { gate.Open(0); } catch (const std::logic_error&) { invalid=true; }
-    Check(invalid);
-    gate.Open(1);
-    invalid=false;
-    try { gate.Open(2); } catch (const std::logic_error&) { invalid=true; }
-    Check(invalid);
-    gate.Close();
-    { auto access=gate.Lock(); Check(!access.open()); }
-
     std::atomic<bool> slow{true},entered{false},finish{false};
-    integration_template::ProductIntegration product([&](const auto& input,const Cancellation& cancel) {
+    integration_template::StreamIntegration product([&](const auto& input,const Cancellation& cancel) {
         entered=true;
         if (slow) cancel.WaitFor(std::chrono::seconds(5));
         return input->size();
@@ -62,7 +51,7 @@ int main() {
     Until([&] { product.Poll(); return received==8; });
     product.Shutdown();
 
-    integration_template::ProductIntegration failing([](const auto&,const Cancellation&) -> std::size_t {
+    integration_template::StreamIntegration failing([](const auto&,const Cancellation&) -> std::size_t {
         throw std::runtime_error("backend failed");
     });
     failing.Start();

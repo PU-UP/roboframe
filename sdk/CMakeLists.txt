@@ -40,7 +40,7 @@ if(BUILD_TESTING)
     target_link_libraries(server_test PRIVATE Roboframe::sdk)
     add_test(NAME server_test COMMAND server_test)
     set_tests_properties(server_test PROPERTIES TIMEOUT 15)
-    add_subdirectory(templates/integration)
+    add_subdirectory(templates)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(NAME sdk_header_layers COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/header_layers_test.py

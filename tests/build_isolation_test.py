@@ -100,7 +100,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/CounterTargets.cmake")
     prefix.rename(relocated)
     passed('independent component generates and installs version.hpp')
 
-    configure(relocated / 'share/roboframe/sdk/templates/integration',
+    configure(relocated / 'share/roboframe/sdk/templates',
               work / 'templates', '-DCMAKE_PREFIX_PATH=' + str(relocated))
     verify(work / 'templates')
     passed('execution templates and direct component test work with a relocated SDK package')

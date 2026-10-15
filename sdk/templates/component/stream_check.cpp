@@ -13,7 +13,7 @@ template<class F> void Until(F ready) {
     }
 }
 int main() {
-    using C=integration_template::StreamComponent;
+    using C=component_template::StreamComponent;
     std::atomic<bool> entered{false},canceled{false};
     C component([&](const C::Input& input,const Cancellation& cancel) {
         if (input->empty()) throw std::runtime_error("injected backend failure");

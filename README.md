@@ -14,7 +14,7 @@ data/                保留原始录制数据，不参与默认构建
 ~~~
 
 先读 [架构](docs/architecture.md)、[SDK 审查](docs/sdk-review.md)，
-再看 [可运行模板](sdk/templates/integration/README.md)。
+再看 [可运行模板](sdk/templates/README.md)。
 当前机制及限制见 [SDK](sdk/README.md) 和 [TODO](TODO.md)。
 通用传输的实现和独立构建方式见 [interface](interface/README.md)；
 旧 demo 的产品协议适配器保留在 demo 分支。
@@ -32,7 +32,7 @@ ctest --test-dir build-skeleton --output-on-failure
 python3 tests/build_isolation_test.py
 ~~~
 
-默认编译 SDK 测试、两种模板和通用传输；没有 robot_runtime。
+默认编译 SDK 测试、组件/编排示例和通用传输；没有 robot_runtime。
 历史 demo 使用 build-demo，旧 build-product/build-server 的产物不代表 main。
 日常开发统一使用下面的 build-dev，编辑器也固定读取该目录。
 BUILD_TESTING=OFF 不要求 Python；POSIX 传输仅在 UNIX 构建。

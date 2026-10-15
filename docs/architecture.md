@@ -37,9 +37,9 @@ integration 先关闭输入并请求所有组件取消，再等待各组件 Deac
 取消是协作式；不响应取消的第三方算法无法强杀。
 ExecutionChannel 的容量包含排队、计算、已完成未领取；外部快照和算法历史另设预算。
 
-Integration 的 UseExecution/UseServer 仍保留，供 demo 等已有调用方使用；
-新模板不调用它们，避免 integration 与组件同时管理同一个执行器。
+Integration 的 UseExecution/UseServer 是保留的兼容接口，由 sdk/tests 覆盖；
+组件开发模板不调用它们，避免 integration 与组件同时管理同一个执行器。
 多组件统一生命周期注册是否值得提炼，留给实际第二个产品验证。
 
-阅读入口：[模板](../sdk/templates/integration/README.md) → [SDK](../sdk/README.md)。
+阅读入口：[模板](../sdk/templates/README.md) → [SDK](../sdk/README.md)。
 审查中尚未解决的自由度限制见 [SDK 审查](sdk-review.md)。

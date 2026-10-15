@@ -1,4 +1,5 @@
 #include <roboframe/core/integration.hpp>
+#include <roboframe/core/input_gate.hpp>
 #include <memory>
 #include <thread>
 using namespace roboframe;
@@ -8,7 +9,7 @@ template<class F> void Until(F done) {
     const auto deadline=Clock::now()+std::chrono::seconds(2);
     while (!done()) { Check(Clock::now()<deadline); std::this_thread::yield(); }
 }
-// No scan, odometry, mapping, product SDK contracts or mandatory component base.
+// Compatibility test for integration-owned execution; new components own their own execution.
 class Product final : public Integration {
 public:
     using Payload=std::shared_ptr<const int>;
@@ -36,6 +37,17 @@ private:
     }
 };
 int main() {
+    InputGate gate;
+    bool invalid=false;
+    try { gate.Open(0); } catch (const std::logic_error&) { invalid=true; }
+    Check(invalid);
+    gate.Open(1);
+    invalid=false;
+    try { gate.Open(2); } catch (const std::logic_error&) { invalid=true; }
+    Check(invalid);
+    gate.Close();
+    { auto access=gate.Lock(); Check(!access.open()); }
+
     Product p;
     p.Start(); const auto first=p.runtime_status().generation;
     auto payload=std::make_shared<const int>(7);

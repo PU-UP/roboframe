@@ -1,32 +1,18 @@
 #pragma once
+#include "../component/goal_component.hpp"
 #include <roboframe/core/integration.hpp>
-#include <roboframe/core/server.hpp>
 #include <roboframe/orchestration/server_action.hpp>
+
 namespace integration_template {
-class WorkComponent final : public roboframe::Component {
-public:
-    using Execution=roboframe::Server<int,int,int>;
-    explicit WorkComponent(Execution::Hooks hooks):execution_(std::chrono::milliseconds(10),std::move(hooks)) {}
-    ~WorkComponent() override { execution_.Shutdown(); }
-    void Activate() override { execution_.Activate(); }
-    void RequestDeactivate() { execution_.RequestDeactivate(); }
-    void Deactivate() override { execution_.Deactivate(); }
-    roboframe::Lifecycle lifecycle() const override {
-        return execution_.active() ? roboframe::Lifecycle::active : roboframe::Lifecycle::inactive;
-    }
-    Execution& server() { return execution_; }
-private:
-    Execution execution_;
-};
 // The handler is test/example work. A product substitutes real Server components and typed goals.
-class ServerProduct final : public roboframe::Integration {
+class BtIntegration final : public roboframe::Integration {
 public:
-    using Work=roboframe::Server<int,int,int>;
-    explicit ServerProduct(Work::Hooks hooks)
+    using Work=component_template::GoalComponent::Execution;
+    explicit BtIntegration(Work::Hooks hooks)
         :work_(std::move(hooks)),
          action_(work_.server(),[this] { return goal_; },[this](const Work::Result& result) { result_=result; }),
          tree_({{"Execute",[this] { return action_.Tick(); },[this] { action_.Halt(); }}}) {}
-    ~ServerProduct() override { Shutdown(); }
+    ~BtIntegration() override { Shutdown(); }
     void Begin(int goal) {
         RequireRunning();
         if (running_ || !action_.Drained()) throw std::logic_error("task busy");
@@ -44,7 +30,7 @@ private:
         if (running_ && tree_.Tick()!=roboframe::bt::Status::running) running_=false;
         if (!running_) action_.Drained();
     }
-    WorkComponent work_;
+    component_template::GoalComponent work_;
     int goal_=0;
     bool running_=false;
     Work::Result result_;

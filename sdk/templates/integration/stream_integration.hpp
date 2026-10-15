@@ -1,16 +1,16 @@
 #pragma once
-#include "stream_component.hpp"
+#include "../component/stream_component.hpp"
 #include <roboframe/core/integration.hpp>
 
 namespace integration_template {
 // Wiring example, not a required base class or another executor owner.
-class ProductIntegration final : public roboframe::Integration {
+class StreamIntegration final : public roboframe::Integration {
 public:
-    using Input = StreamComponent::Input;
-    using Output = StreamComponent::Output;
-    using Execution = StreamComponent::Execution;
-    explicit ProductIntegration(Execution::Handler compute) : component_(std::move(compute)) {}
-    ~ProductIntegration() override { output_={}; Shutdown(); }
+    using Input = component_template::StreamComponent::Input;
+    using Output = component_template::StreamComponent::Output;
+    using Execution = component_template::StreamComponent::Execution;
+    explicit StreamIntegration(Execution::Handler compute) : component_(std::move(compute)) {}
+    ~StreamIntegration() override { output_={}; Shutdown(); }
     // Control owner only; output callbacks must not block, throw or reenter.
     void SetOutput(std::function<void(Output)> output) { output_=std::move(output); }
     roboframe::Admission Push(Input input) { return component_.Push(std::move(input)); }
@@ -27,7 +27,7 @@ private:
             if (output_) output_(result.output);
         }
     }
-    StreamComponent component_;
+    component_template::StreamComponent component_;
     std::function<void(Output)> output_;
 };
 } // namespace integration_template

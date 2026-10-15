@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 
-namespace integration_template {
+namespace component_template {
 // Example ports and budgets only; replace with the real algorithm's public contract.
 class StreamComponent final : public roboframe::Component {
 public:
@@ -45,4 +45,4 @@ private:
     std::uint64_t epoch_=0;
     Execution execution_; // Declared last; hooks cannot outlive algorithm state.
 };
-} // namespace integration_template
+} // namespace component_template

@@ -20,7 +20,7 @@ SDK 安装时同时放入 share/roboframe/sdk/skills/roboframe-component；
 组件可由普通 main 直接使用和验证，输入可来自 interface、ROS、文件或测试数据，无需 Integration。
 宿主负责接入和格式转换，组件公开输入输出、线程与生命周期契约；README 给出最小调用示例。
 异步线程由组件自身管理；测试等待其结果，不靠产品 Poll 驱动算法。
-直接示例见 [component_check.cpp](templates/integration/component_check.cpp)。
+直接示例见 [组件直接测试](templates/component/stream_check.cpp)。
 跨组件业务关系和产品任务编排另做集成验证。
 源码仓库可从根目录用 -DROBOFRAME_COMPONENT=<name> 选择单个源码组件，
 与 -DROBOFRAME_PRODUCT 互斥；日常开发使用固定 build-dev，具体命令见仓库 README。
@@ -37,7 +37,7 @@ SDK 安装时同时放入 share/roboframe/sdk/skills/roboframe-component；
 
 不要求每个组件一条线程，也不要在自带异步算法外再无条件套一层线程。
 两种 SDK 执行器职责不同，均不持有算法 Component。
-[两个可运行模板](templates/integration/README.md)统一示范组件管理执行，
+[组件与编排示例](templates/README.md)统一示范组件管理执行，
 integration 只接线、协调生命周期和产品任务。它们不是必须继承的新基类。
 
 ## 目录与依赖
@@ -45,7 +45,8 @@ integration 只接线、协调生命周期和产品任务。它们不是必须�
 - core/：Component、Integration、InputGate、Server、ExecutionChannel、任务/运行状态。
 - datatype/：位姿、TF、scan、submap、grid、路径与速度等共享语义。
 - orchestration/：可选记忆式 Sequence 和 ServerAction，只依赖 core/自身。
-- templates/integration/：数据流组件与 Server/BT 的可编译装配示例。
+- templates/component/：组件自管 ExecutionChannel / Server 的独立示例。
+- templates/integration/：复用上述组件的接线与 BT 编排；统一构建入口在 templates/。
 
 core 只依赖 core，datatype 只依赖 datatype；自动测试约束层间依赖。
 没有总头、万能消息总线或必须使用的导航模块。
@@ -111,5 +112,5 @@ ctest --test-dir build-sdk --output-on-failure
 cmake --install build-sdk --prefix "$PWD/build-packages"
 ~~~
 
-安装模板独立编译方法见 [模板说明](templates/integration/README.md)。
+安装模板独立编译方法见 [模板说明](templates/README.md)。
 根目录 tests/build_isolation_test.py 验证安装、公开头、模板和 SOURCE/PACKAGE 选择。

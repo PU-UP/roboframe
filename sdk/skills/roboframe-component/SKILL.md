@@ -32,10 +32,10 @@ description: 根据开发者需求创建或修改 Roboframe C++14 组件，复�
 | 需求 | 参考 |
 |---|---|
 | 快速同步计算 | Component 基类和需要的数据类型即可，不添加执行器 |
-| 有界异步数据流 | [StreamComponent](../../templates/integration/stream_component.hpp) |
-| 单目标/周期执行及取消 | [WorkComponent](../../templates/integration/server_product.hpp) 中的组件部分；不复制 ServerProduct、BT 或任务 |
-| 所有权与停止顺序 | [执行模板说明](../../templates/integration/README.md) |
-| 不创建 Integration 的验证 | [直接组件测试](../../templates/integration/component_check.cpp) |
+| 有界异步数据流 | [StreamComponent](../../templates/component/stream_component.hpp) |
+| 单目标/周期执行及取消 | [GoalComponent](../../templates/component/goal_component.hpp) |
+| 所有权与停止顺序 | [执行模板说明](../../templates/README.md) |
+| 不创建 Integration 的验证 | [数据流测试](../../templates/component/stream_check.cpp)、[目标执行测试](../../templates/component/goal_check.cpp) |
 
 ## 形成组件契约并实现
 
@@ -61,6 +61,10 @@ description: 根据开发者需求创建或修改 Roboframe C++14 组件，复�
 组件须公开输入、输出及生命周期接口，说明调用线程、数据所有权和错误行为。
 使用者可在自己的 main 中，通过 interface、ROS、文件或测试数据调用组件，无需 Integration。
 接入和格式转换由外部程序完成，组件库不依赖具体接入方式；不预建适配器或教程。
+
+独立运行入口统一使用 main.cpp，可执行目标按用途命名。
+CMake 只声明目标、链接已有依赖目标并注册测试；回放与结果判断放 tests 脚本，不内嵌长命令或正则。
+显式启用的入口或测试缺少依赖时明确报错，不因文件不存在而静默跳过。
 
 通过此 skill 创建或修改组件时，必须交付或同步组件 README，方便开发者快速使用：
 - 简述功能与输入输出契约，给出基于真实 API 的最小调用示例：构造、绑定输出、激活、输入、停用。
