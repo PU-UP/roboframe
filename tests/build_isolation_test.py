@@ -104,15 +104,16 @@ include("${CMAKE_CURRENT_LIST_DIR}/CounterTargets.cmake")
               work / 'templates', '-DCMAKE_PREFIX_PATH=' + str(relocated))
     verify(work / 'templates')
     passed('execution templates and direct component test work with a relocated SDK package')
-    source_skill = sdk / 'skills/roboframe-component/SKILL.md'
-    installed_skill = relocated / 'share/roboframe/sdk/skills/roboframe-component/SKILL.md'
-    assert installed_skill.read_bytes() == source_skill.read_bytes()
-    assert (installed_skill.parent.parent / 'feedback-format.md').read_bytes() == (
-        source_skill.parent.parent / 'feedback-format.md').read_bytes()
-    for entry in [source_skill, installed_skill]:
-        for target in re.findall(r'\]\(([^)]+)\)', entry.read_text()):
-            assert (entry.parent / target.split('#')[0]).is_file(), (entry, target)
-    passed('component skill ships with SDK and its template/test references survive relocation')
+    for name in ['roboframe-component', 'roboframe-product']:
+        source_skill = sdk / 'skills' / name / 'SKILL.md'
+        installed_skill = relocated / 'share/roboframe/sdk/skills' / name / 'SKILL.md'
+        assert installed_skill.read_bytes() == source_skill.read_bytes()
+        assert (installed_skill.parent.parent / 'feedback-format.md').read_bytes() == (
+            source_skill.parent.parent / 'feedback-format.md').read_bytes()
+        for entry in [source_skill, installed_skill]:
+            for target in re.findall(r'\]\(([^)]+)\)', entry.read_text()):
+                assert (entry.parent / target.split('#')[0]).is_file(), (entry, target)
+    passed('component/product skills and feedback format ship with SDK; references survive relocation')
 
     headers = sorted((relocated / 'include').rglob('*.hpp'))
     for header in headers:

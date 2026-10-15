@@ -1,13 +1,13 @@
 # roboframe
 
-C++14 机器人算法框架骨架。main 不包含具体算法组件或产品实现；
+C++14 机器人算法框架骨架。main 包含 odom 接入组件，尚无具体产品；
 完整建图/导航示例保存在 demo 分支。
 
 ~~~text
 sdk/                 可选运行机制、公共数据、BT 辅助及可编译模板
 interface/           通用 POSIX stdio 实现、独立发送线程与测试（未删除）
 cmake/               产品的 SOURCE/PACKAGE 组件选择
-components/          留给独立算法组件
+components/          独立算法组件（当前含 odom）
 products/            空，留给新的产品接线、契约和 BT
 tests/               SDK 安装与产品/组件构建隔离检查
 data/                保留原始录制数据，不参与默认构建
@@ -51,7 +51,7 @@ git switch main
 
 ## 开始开发组件
 
-组件开发可使用 [SDK component skill](sdk/skills/roboframe-component/SKILL.md)。
+组件开发与后续维护可使用 [SDK component skill](sdk/skills/roboframe-component/SKILL.md)。
 它引用现有接口和模板，包含不依赖 Integration 的测试路径；不替开发者决定算法语义。
 例如：“请读取并使用该 skill，按以下输入、输出和行为要求开发我的组件……”。
 
@@ -94,8 +94,11 @@ VS Code 的 clangd.arguments 不再另设 --compile-commands-dir，避免覆盖 
 
 ## 开始一个真实产品
 
-1. 先在 components/<name> 写一个组件及独立测试。只依赖 SDK，
-   算法和生命周期在组件内；同步、ExecutionChannel、Server 或已有算法线程按需选择。
+可使用 [SDK product skill](sdk/skills/roboframe-product/SKILL.md)，
+复用已有组件与 integration 模板，完成产品接线、编排及后续维护；按变更范围验证，不重建已有骨架。
+
+1. 先选择已有组件；缺少能力时在 components/<name> 开发组件及独立测试。
+   组件只依赖 SDK/自身契约，算法和生命周期在组件内；执行方式按需选择。
 2. 在 products/<name> 写公开 contract、integration 与 main。开始时一个接线文件即可；
    不按 demo 拆出大量任务/数据流文件。需要任务顺序时再引入 BT。
 3. 创建产品 Dependencies.cmake，明确 SDK 版本与组件清单：

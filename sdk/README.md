@@ -4,14 +4,19 @@ SDK 提供机制与共享数据，不包含产品协议、具体树、算法或�
 Component 的公共基类只规定 Activate、Deactivate 和 lifecycle；
 Server、ExecutionChannel、Integration、BT 都是按需选用。
 
-## Component 开发 skill
+## 开发与维护 skills
 
 [roboframe-component](skills/roboframe-component/SKILL.md) 引用现有公开接口和执行模板，
-指导组件实现、直接端口测试、独立构建与安装交付，不另建组件框架。
+指导组件开发、后续功能迭代与修复，以及端口测试、独立构建与交付，不另建组件框架。
 可在新任务中明确要求“读取并使用 sdk/skills/roboframe-component/SKILL.md，
 按我的组件需求开发”；无需依赖这段对话或历史 demo。
 
-SDK 安装时同时放入 share/roboframe/sdk/skills/roboframe-component；
+[roboframe-product](skills/roboframe-product/SKILL.md) 指导已有组件的产品装配及后续维护、
+integration 接线与可选 BT、生命周期协调和集成验证，复用当前模板与构建机制。
+它不负责实现算法组件；单组件独立验证仍使用 component skill。
+维护时沿用现有结构和契约，按变更影响同步调用方、测试与 README，不重复创建骨架。
+
+SDK 安装时同时放入 share/roboframe/sdk/skills/；
 相邻 templates 也随 SDK 安装。接口从实际选中的 SDK 头文件读取。
 这里提供技能文件，不修改用户的全局技能配置；可直接按路径要求助手读取。
 所有技能共用 [反馈规范](skills/feedback-format.md)，每次使用记录背景、验证及遇到的问题；

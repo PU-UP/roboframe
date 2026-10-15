@@ -5,7 +5,7 @@
 
 ## 存放与记录时机
 
-- 每次使用 skill 创建或修改组件/integration，先创建一份 UTF-8 JSON 运行记录，
+- 每次使用 skill 创建或修改组件/产品/integration，先创建一份 UTF-8 JSON 运行记录，
   保存到 roboframe 仓库根目录的 `.roboframe/feedback/`。
   文件名为 `YYYYMMDDTHHMMSS-<uuid>.json`，每个 agent/每次使用各建一份，避免覆盖。
 - 开始时填写上下文；遇到问题立即追加 findings；结束或受阻时补充验证结果及 finished_at。
@@ -43,7 +43,7 @@
   },
   "context": {
     "task": "<开发目的及使用背景>",
-    "target": "<组件或 integration 路径>",
+    "target": "<组件、产品或 integration 路径>",
     "requirements": "<与问题有关的输入输出、线程、数据和约束>",
     "environment": "<操作系统、编译器、构建方式>"
   },

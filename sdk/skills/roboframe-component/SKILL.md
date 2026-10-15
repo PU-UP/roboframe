@@ -1,9 +1,9 @@
 ---
 name: roboframe-component
-description: 根据开发者需求创建或修改 Roboframe C++14 组件，复用当前 SDK 接口和执行模板，完成不依赖 Integration 的组件测试及独立构建、安装验证。用于组件开发，不负责产品 BT 编排或 SDK 架构重构。
+description: 根据开发者需求开发与维护 Roboframe C++14 组件（功能迭代、故障修复、接口调整），复用当前 SDK 接口和执行模板，完成不依赖 Integration 的组件测试及独立构建、安装验证。用于组件开发，不负责产品 BT 编排或 SDK 架构重构。
 ---
 
-# Roboframe component 开发
+# Roboframe component 开发与维护
 
 把开发者的算法与端口需求落实成独立组件，不替开发者定义算法业务。
 只使用当前工作区或选定安装包的 SDK；不从历史 demo 恢复实现，不新增第二套骨架。
@@ -36,6 +36,12 @@ description: 根据开发者需求创建或修改 Roboframe C++14 组件，复�
 | 单目标/周期执行及取消 | [GoalComponent](../../templates/component/goal_component.hpp) |
 | 所有权与停止顺序 | [执行模板说明](../../templates/README.md) |
 | 不创建 Integration 的验证 | [数据流测试](../../templates/component/stream_check.cpp)、[目标执行测试](../../templates/component/goal_check.cpp) |
+
+## 维护已有组件
+
+先读现有契约、调用方和测试；修复先复现，接口或行为变化需同步调用方与回归测试。
+沿用组件结构，只修改需求涉及的代码及 README；不照模板重建组件或顺带迁移产品。
+按影响范围验证；新增组件或改变构建、导出、依赖及公开接口时执行下文独立交付检查。
 
 ## 形成组件契约并实现
 
@@ -114,9 +120,9 @@ SDK 可用 ROBOFRAME_SDK_SOURCE=PACKAGE 和 CMAKE_PREFIX_PATH 选择安装包。
 clangd 使用 build-dev/compile_commands.json；生成头路径由 CMake 提供，不手工补 include。
 不同工具链/生成器使用相应目录，不能混用缓存；仅用安装包开发时沿用宿主工程的构建与索引约定。
 
-根目录验证不替代以下独立交付验证；只有安装包而没有根工程时直接使用独立入口。
+需要独立交付检查时，根目录验证不替代以下验证；只有安装包而没有根工程时直接使用独立入口。
 
-记录并实际执行独立配置、构建、ctest 和安装；使用所选 SDK 的安装前缀。
+执行独立交付检查时，记录并实际执行配置、构建、ctest 和安装；使用所选 SDK 的安装前缀。
 命令中的 name、PackageName、路径按实际组件填写，不能留下占位符就声称验证成功。
 
 ~~~sh
