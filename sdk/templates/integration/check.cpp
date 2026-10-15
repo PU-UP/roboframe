@@ -55,6 +55,19 @@ int main() {
     product.Reset(); slow=false; product.Start();
     Check(product.Push(std::make_shared<const std::vector<unsigned char>>(3,1))==Admission::accepted);
     Until([&] { product.Poll(); return received==3; });
-    Check(product.runtime_status().stale_results>=1 && old.expired());
+    Check(old.expired()); // The component discards its old results during Deactivate.
+    product.Stop();
+    product.Start();
+    Check(product.Push(std::make_shared<const std::vector<unsigned char>>(5,1))==Admission::accepted);
+    Until([&] { product.Poll(); return received==8; });
     product.Shutdown();
+
+    integration_template::ProductIntegration failing([](const auto&,const Cancellation&) -> std::size_t {
+        throw std::runtime_error("backend failed");
+    });
+    failing.Start();
+    Check(failing.Push(std::make_shared<const std::vector<unsigned char>>(1,1))==Admission::accepted);
+    Until([&] { failing.Poll(); return failing.runtime_status().state==RuntimeState::error; });
+    Check(failing.Push(std::make_shared<const std::vector<unsigned char>>(1,1))==Admission::closed);
+    failing.Reset();failing.Start();failing.Stop();
 }

@@ -9,6 +9,7 @@ public:
     explicit WorkComponent(Execution::Hooks hooks):execution_(std::chrono::milliseconds(10),std::move(hooks)) {}
     ~WorkComponent() override { execution_.Shutdown(); }
     void Activate() override { execution_.Activate(); }
+    void RequestDeactivate() { execution_.RequestDeactivate(); }
     void Deactivate() override { execution_.Deactivate(); }
     roboframe::Lifecycle lifecycle() const override {
         return execution_.active() ? roboframe::Lifecycle::active : roboframe::Lifecycle::inactive;
@@ -24,7 +25,7 @@ public:
     explicit ServerProduct(Work::Hooks hooks)
         :work_(std::move(hooks)),
          action_(work_.server(),[this] { return goal_; },[this](const Work::Result& result) { result_=result; }),
-         tree_({{"Execute",[this] { return action_.Tick(); },[this] { action_.Halt(); }}}) { UseServer(work_); }
+         tree_({{"Execute",[this] { return action_.Tick(); },[this] { action_.Halt(); }}}) {}
     ~ServerProduct() override { Shutdown(); }
     void Begin(int goal) {
         RequireRunning();
@@ -35,9 +36,9 @@ public:
     bool settled() { return !running_ && action_.Drained(); }
     const Work::Result& result() const { return result_; }
 private:
-    void OnStart(std::uint64_t) override {}
-    void CloseInputs() noexcept override { Cancel(); }
-    void OnStop() noexcept override { action_.Drained(); }
+    void OnStart(std::uint64_t) override { work_.Activate(); }
+    void CloseInputs() noexcept override { Cancel(); work_.RequestDeactivate(); }
+    void OnStop() noexcept override { work_.Deactivate(); action_.Drained(); }
     void OnReset() override { result_={}; }
     void OnPoll() override {
         if (running_ && tree_.Tick()!=roboframe::bt::Status::running) running_=false;

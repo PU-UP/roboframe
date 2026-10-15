@@ -29,6 +29,10 @@ set_target_properties(roboframe_orchestration PROPERTIES EXPORT_NAME orchestrati
 target_link_libraries(roboframe_orchestration INTERFACE Roboframe::sdk)
 
 if(BUILD_TESTING)
+    add_executable(shared_map_reader_test tests/shared_map_reader_test.cpp tests/support/shared_map_reader.cpp)
+    target_link_libraries(shared_map_reader_test PRIVATE Roboframe::sdk)
+    add_test(NAME shared_map_reader_test COMMAND shared_map_reader_test)
+    set_tests_properties(shared_map_reader_test PROPERTIES TIMEOUT 10)
     add_executable(behavior_tree_test tests/behavior_tree_test.cpp)
     target_link_libraries(behavior_tree_test PRIVATE Roboframe::orchestration)
     add_test(NAME behavior_tree_test COMMAND behavior_tree_test)

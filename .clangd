@@ -1,5 +1,5 @@
 CompileFlags:
-  CompilationDatabase: build-product
+  CompilationDatabase: build-skeleton
 
 Index:
   Background: Build

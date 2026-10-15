@@ -2,7 +2,7 @@
   "clangd.path": "clangd",
   "clangd.arguments": [
     "--background-index",
-    "--compile-commands-dir=${workspaceFolder}/build-product",
+    "--compile-commands-dir=${workspaceFolder}/build-skeleton",
     "--query-driver=/usr/bin/c++,/usr/bin/g++,/usr/bin/clang++,/usr/bin/gcc",
     "--header-insertion=never",
     "--completion-style=detailed",

@@ -1,3 +1,5 @@
+> main 仅保留这份原始数据；本页的组件、工具和回放命令请在 demo 分支使用。
+
 # Intel Lab：原始数据与规划参考地图
 
 ## 来源与用途
@@ -15,35 +17,17 @@ corrected-log 不是本项目运行 SLAM 的结果，不是测量真值。910 �
 所以本次改善来自位姿，而非缩短到前几百帧、改变激光角度或隐藏后续数据。
 发布页没有提供误差界或具体生成参数，本项目不推断其精度等级。
 
-## 校验与复现
-两份数据已随仓库提供，无需另行下载。可以从仓库根目录校验：
+## 数据校验
+
+两份数据已随仓库提供，无需下载。从仓库根目录执行：
 
 ~~~sh
 (cd data/intel-lab && sha256sum -c SHA256SUMS)
 ~~~
 
-以下下载方式仅用于恢复缺失的 corrected 文件。
-旧服务器的 HTTPS 端口不可用；以下 HTTP 链接来自发布页。文件通过重定向下载，指纹用于锁定本次验收版本，
-不是发布者签名；下载到 .part，校验后再放入正式位置。已存在文件时不必重新下载。
-
-~~~sh
-mkdir -p data/intel-lab
-curl -fL --max-filesize 20000000 \
-  'http://www2.informatik.uni-freiburg.de/~stachnis/datasets/datasets/intel-lab/intel.gfs.log.gz' \
-  -o data/intel-lab/intel.gfs.log.gz.part
-printf '%s  %s\n' \
-  '152d4db32761a71ac4a557d2bd383d4ba054864c290b799df92096ba34b70dea' \
-  'data/intel-lab/intel.gfs.log.gz.part' | sha256sum -c - && \
-  mv data/intel-lab/intel.gfs.log.gz.part data/intel-lab/intel.gfs.log.gz
-
-python3 tools/mapping/replay.py --dataset corrected --scans 0 --finish-after 909 \
-  --output build-product/corrected-reference
-python3 tests/intel_reference_check.py build-product/corrected-reference/live.rfgrid \
-  --output build-product/corrected-reference/connectivity.json
-~~~
-输出目录/JSON 文件不能覆盖；重跑请换新名称。原始模式保留：`--dataset raw`（默认）。
-默认最多回放 3000 帧；corrected 默认使用全部 910 帧，显式 `--scans 0` 始终表示全部。
-`--data` 仅改变路径，不取消所选数据版本的校验。
+数据解析和建图/导航回放工具保留在 demo 分支。
+需要复现旧结果时先切换到 demo，按该分支 README 与 docs 中的说明运行；
+不要使用旧构建目录来判断 main 的代码行为。
 
 ## 正确解析
 - 只使用同一 FLASER 中的 180 个量程和配套位姿；不要按帧号或浮点时间戳把 raw/corrected 两文件硬拼。
@@ -55,21 +39,8 @@ python3 tests/intel_reference_check.py build-product/corrected-reference/live.rf
   `-90..-1,+1..+90` 度约定；此次查证与现有代码一致，未因外观而换角度模型。
 - 有效返回为 `0.01 <= r < 20 m`；远读数丢弃，不压成 20 米障碍，不伪造无返回清空射线。
 
-## 接入边界与规划使用
-继续复用 Python → IPC → interface → integration → odom / SLAM / PoseGraph / LocalMapBuilder / MapUpdater → MapServer。
-通过 RecordedSlamComponent 模拟修正位姿输出，没有增加真实 SLAM。
-[导航 demo](../../docs/navigation-demo.md) 已用此参考地图接入简单 Planner/Controller；速度无人消费，TF 为显式静止测试输入，不声称运动闭环。
-建图任务现由产品内最小 BT 编排，数据来源与几何处理不变，见 [架构与 BT 边界](../../docs/architecture.md)。
+## 新产品使用
 
-当前接入独立 SLAM、PoseGraph、LocalMapBuilder 与完整 TF：raw odom 与 corrected pose 分开输入，地图显式标记 map 坐标。
-`--dataset corrected` 回放匹配的 910 帧，`--dataset tf` 回放全部原始扫描并稀疏校正；两者通过 SLAM 输出修正 pose，由 PoseGraph 计算 T_map_odom。
-具体运行、时间有效性和 RFGRID2 兼容说明见 [TF 数据链路](../../docs/demo_robot.md)。
-
-规划使用前应重新生成当前格式的地图，不直接使用旧 build 产物：
-- live.rfgrid 包含回放末尾的实时地图；final.rfgrid 是 FINISH 边界的冻结结果。
-- 栅格字节 occupied=0、free=254、unknown=205，不是 ROS 的 -1/0/100。
-- 存储栅格 y 向上，PNG 顶部为 +y；起点和目标必须与地图坐标系一致。
-- 原图尚未膨胀；当前 Planner 维护私有保守余量检查，不能修改共享原图。
-- intel_reference_check.py 只做离线连通性检查，不是运行时 planner 或实机安全验证。
-
-当前优先级统一见 [TODO](../../TODO.md)，不在数据文档另设开发路线。
+当前 main 不包含 SLAM、建图或导航组件。录制修正轨迹只是输入数据，
+不能作为新产品在线定位精度或实机控制闭环的证明。
+先选择真实输入语义、时间匹配和坐标系，再独立实现自己的组件。
