@@ -27,15 +27,16 @@ int main() {
             auto scan=Scan(i); inputs.push_back(scan);
             robot.PushScan(scan); robot.PushOdometry({i,{}});
         }
-        Until([&] { return robot.data_flow_status().compute_results==8; });
-        Check(robot.data_flow_status().compute_peak_retained==8);
+        Until([&] { return robot.data_flow_status().localization_results==8; });
+        Check(robot.data_flow_status().localization_retained==8);
         Check(robot.data_flow_status().compute_rejected==992 && odoms==0 && maps==0);
         std::size_t retained=0;
         for (const auto& input:inputs) if (!input.expired()) ++retained;
         Check(retained==8);
         robot.CancelMapping(); Check(robot.mapping_status().drop_cancel==8);
         const auto generation=robot.runtime_status().generation;
-        robot.StartMapping(2); robot.Poll();
+        robot.StartMapping(2);
+        Until([&] { robot.Poll();return robot.data_flow_status().pipeline_pending==0; });
         Check(robot.data_flow_status().detached_task_results==8);
         Check(robot.mapping_status().integrated==0 && maps>0 && odoms==1);
         Check(robot.runtime_status().generation==generation); // Task cancellation never resets algorithms.
@@ -52,7 +53,7 @@ int main() {
         DemoRobotIntegration robot(directory,std::chrono::milliseconds(5000));
         robot.Configure({{30,20,1,-5,-5,GridFrame::map},100,20}); robot.Start();
         robot.PushOdometry({0,{}}); robot.PushMapReference({0,{10,0,0}}); robot.PushScan(Scan(0));
-        Until([&] { return robot.data_flow_status().compute_active==1; });
+        Until([&] { robot.Poll(); return robot.data_flow_status().compute_active==1; });
         auto start=Clock::now();
         robot.StartMapping(1); robot.CancelMapping();
         robot.PushOdometry({1,{1,0,0}}); robot.Poll();
@@ -63,7 +64,7 @@ int main() {
         Check(Clock::now()-start<std::chrono::milliseconds(500));
         robot.Poll(); Check(robot.data_flow_status().stale_results==1 && !robot.live_map());
         robot.PushOdometry({0,{}}); robot.PushScan(Scan(0));
-        Until([&] { return robot.data_flow_status().compute_active==1; });
+        Until([&] { robot.Poll(); return robot.data_flow_status().compute_active==1; });
         start=Clock::now(); robot.Shutdown();
         Check(Clock::now()-start<std::chrono::milliseconds(500));
         Check(robot.data_flow_status().compute_retained==0);
@@ -94,14 +95,13 @@ int main() {
         robot.SetOutputs(output); robot.StartMapping(1);
         robot.PushOdometry({0,{}}); robot.PushScan(Scan(0)); robot.FinishMapping();
         robot.PushOdometry({100000,{}}); robot.PushScan(Scan(100000));
-        Until([&] { return robot.data_flow_status().compute_results==2; });
-        robot.Poll();
+        Until([&] { robot.Poll();return robot.data_flow_status().pipeline_pending==0; });
         Check(finished==1 && robot.map()->revision==1 && robot.live_map()->revision==2);
         // A global bounds rejection does not stop or poison the next local submap.
         robot.PushOdometry({200000,{100,0,0}}); robot.PushScan(Scan(200000));
-        Until([&] { robot.Poll(); return !robot.data_flow_status().compute_retained; });
+        Until([&] { robot.Poll(); return !robot.data_flow_status().pipeline_pending; });
         robot.PushOdometry({300000,{}}); robot.PushScan(Scan(300000));
-        Until([&] { robot.Poll(); return !robot.data_flow_status().compute_retained; });
+        Until([&] { robot.Poll(); return !robot.data_flow_status().pipeline_pending; });
         Check(robot.runtime_status().state==RuntimeState::running);
         Check(robot.data_flow_status().local_updates==4 && robot.live_map()->revision==3);
     }

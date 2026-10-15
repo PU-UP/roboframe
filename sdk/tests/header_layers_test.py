@@ -7,6 +7,7 @@ root = Path(sys.argv[1])
 allowed = {
     "core": {"core"},
     "datatype": {"datatype"},
+    "orchestration": {"core", "orchestration"},
 }
 errors = []
 for header in sorted(root.rglob("*.hpp")):

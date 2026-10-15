@@ -6,7 +6,7 @@
 namespace posegraph {
 roboframe::ComponentInfo GetComponentInfo();
 // Recorded correction propagation and bounded node storage, NOT a graph optimizer.
-// Synchronous single-owner calls; integration supplies its short sensor-state lock.
+// Synchronous serialized calls; the product assigns an execution context.
 class PoseGraphComponent final : public roboframe::Component {
 public:
     explicit PoseGraphComponent(std::int64_t max_correction_age_us, bool global = true);

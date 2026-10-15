@@ -23,5 +23,6 @@ private:
     bool quit_ = false;
     std::uint64_t request_id_ = 0, last_request_id_ = 0, event_id_ = 0;
     bool subscribed_ = false;
+    std::mutex event_mutex_;
 };
 } // namespace demo_robot

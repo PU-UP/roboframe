@@ -23,7 +23,19 @@ target_include_directories(roboframe_sdk INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
+add_library(roboframe_orchestration INTERFACE)
+add_library(Roboframe::orchestration ALIAS roboframe_orchestration)
+set_target_properties(roboframe_orchestration PROPERTIES EXPORT_NAME orchestration)
+target_link_libraries(roboframe_orchestration INTERFACE Roboframe::sdk)
+
 if(BUILD_TESTING)
+    add_executable(behavior_tree_test tests/behavior_tree_test.cpp)
+    target_link_libraries(behavior_tree_test PRIVATE Roboframe::orchestration)
+    add_test(NAME behavior_tree_test COMMAND behavior_tree_test)
+    add_executable(server_test tests/server_test.cpp)
+    target_link_libraries(server_test PRIVATE Roboframe::sdk)
+    add_test(NAME server_test COMMAND server_test)
+    set_tests_properties(server_test PROPERTIES TIMEOUT 15)
     add_subdirectory(templates/integration)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(NAME sdk_header_layers COMMAND ${Python3_EXECUTABLE}
@@ -57,7 +69,7 @@ configure_package_config_file(cmake/RoboframeSDKConfig.cmake.in
     ${CMAKE_CURRENT_BINARY_DIR}/RoboframeSDKConfig.cmake INSTALL_DESTINATION ${package_dir})
 write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/RoboframeSDKConfigVersion.cmake
     COMPATIBILITY SameMajorVersion)
-install(TARGETS roboframe_sdk EXPORT RoboframeSDKTargets)
+install(TARGETS roboframe_sdk roboframe_orchestration EXPORT RoboframeSDKTargets)
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/generated/roboframe/sdk_version.hpp
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/roboframe)

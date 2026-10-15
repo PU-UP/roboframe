@@ -23,7 +23,7 @@ int main() {
     output.mapping = [&](const MappingEvent&) { Check(std::this_thread::get_id() == owner); };
     robot.SetOutputs(output); robot.Start(); robot.StartMapping(1);
     robot.PushOdometry({0, {}}); robot.PushScan(std::make_shared<const Scan2D>(Scan2D{0, {{2, 0}}}));
-    Until([&] { return robot.data_flow_status().compute_active == 1; });
+    Until([&] { robot.Poll(); return robot.data_flow_status().compute_active == 1; });
     std::atomic<int> odoms{0}, scans{0}, closed{0};
     std::atomic<bool> go{false}, stop{false};
     auto odom_input = std::thread([&] {

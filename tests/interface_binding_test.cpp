@@ -53,6 +53,28 @@ int main() {
     Check(output.find("MAPPING stopped") < output.find("RES 4 BYE"));
     Check(output.find("MAPPING stopped 4") != std::string::npos);
 
+    DemoRobotInputs navigation_product;
+    int goals=0,cancels=0;
+    navigation_product.navigation.start=[&](NavigationGoal goal) {
+        Check(goal.session==11 && goal.pose.x==2 && goal.pose.y==3 && goal.pose.yaw==0.5);++goals;
+    };
+    navigation_product.navigation.cancel=[&] { ++cancels; };
+    navigation_product.navigation.status=[] { return NavigationStatus{NavigationPhase::following,11,2,{}}; };
+    auto path=std::make_shared<Path2D>();path->map_revision=4;path->poses={{1,2,0},{2,3,0.5}};
+    navigation_product.navigation.path=[&] { return NavigationPath{11,2,path}; };
+    output=Exchange(navigation_product,
+        "REQ 1 SUBSCRIBE ON\nREQ 2 NAVIGATE 11 2 3 0.5\nREQ 3 NAV_STATUS\nREQ 4 GET_PATH\n"
+        "REQ 5 NAVIGATE 12 nan 3 0\nREQ 6 NAV_CANCEL\nREQ 7 QUIT\n",[] {},
+        [](DemoRobotOutputs publish) {
+            publish.velocity({11,2,5,100,{}});
+            publish.navigation({NavigationPhase::canceled,11,2,"requested"});
+        });
+    Check(goals==1 && cancels==1 && output.find("RES 5 ERROR")!=std::string::npos);
+    Check(output.find("RES 3 NAV following 11 2 -")!=std::string::npos);
+    Check(output.find("RES 4 PATH 11 2 4 map 2 1 2 0 2 3 0.5")!=std::string::npos);
+    Check(output.find("CMD_VEL 11 2 5 100 0 0")!=std::string::npos);
+    Check(output.find("NAV canceled 11 2 requested")!=std::string::npos);
+
     // The same interface works with a sensor-only product, with no integration linked.
     DemoRobotInputs sensor_product;
     int odoms = 0;

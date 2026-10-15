@@ -1,6 +1,7 @@
 #pragma once
 #include <roboframe/core/runtime.hpp>
 #include <demo_robot/mapping.hpp>
+#include <demo_robot/navigation.hpp>
 #include <roboframe/datatype/grid.hpp>
 #include <roboframe/datatype/transforms2d.hpp>
 #include <functional>
@@ -15,7 +16,7 @@ struct MappingEvent {
     std::uint64_t generation = 0;
     std::string name;
 };
-// Invoked on the business command/Poll owner, never on sensor producer or compute threads.
+// Outputs run on the command/Poll owner, except velocity also runs on the controller worker.
 // Sensor telemetry may coalesce to the latest value before Poll. Must not block, throw or reenter.
 // Receivers may retain immutable snapshots. Clear callbacks before destroying receivers.
 struct DemoRobotOutputs {
@@ -25,5 +26,9 @@ struct DemoRobotOutputs {
     std::function<void(const roboframe::TransformStatus2D&)> transforms;
     std::function<void(const MapView&)> map;
     std::function<void(const MappingEvent&)> mapping;
+    std::function<void(const NavigationStatus&)> navigation;
+    std::function<void(const NavigationPath&)> path;
+    // Must be thread-safe and bounded; SetOutputs({}) waits for in-flight delivery.
+    std::function<void(const VelocityCommand&)> velocity;
 };
 } // namespace demo_robot

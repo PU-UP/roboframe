@@ -19,14 +19,23 @@ struct LidarInput {
 };
 // This product's odometry/scan/reference ingress, synchronization and lightweight dispatch.
 // Connections and matching policy are product-owned; shared execution/ownership is SDK-owned.
-// The short lock covers recorded synchronous backends and bounded admission only.
-// Heavy backends need roboframe::ExecutionChannel and explicitly associated completion results.
+// Input lock covers matching/admission only. SLAM/PoseGraph execute on the localization worker.
+// Scan work captures its matching odometry; delayed completion never rereads evictable history.
 class SensorIngress {
 public:
-    using Sink = std::function<roboframe::Admission(std::uint64_t, LidarInput)>;
+    struct ScanWork {
+        roboframe::Scan2DPtr scan;
+        roboframe::TimedPose2D odom;
+        std::vector<roboframe::MapPose2D> references;
+        std::uint64_t tag=0;
+    };
+    using LocalizationExecution=roboframe::ExecutionChannel<ScanWork,LidarInput>;
+    using TransformSink=std::function<void(roboframe::TransformStatus2D,std::chrono::steady_clock::time_point)>;
     struct Options {
         roboframe::GridFrame frame = roboframe::GridFrame::odom;
         std::int64_t max_pose_gap_us=250000;
+        std::int64_t max_correction_age_us=20000000;
+        std::chrono::milliseconds test_delay{0};
     };
     struct Counts { std::uint64_t received=0, dropped=0, drop_sync=0, drop_queue=0; };
     struct State {
@@ -35,6 +44,7 @@ public:
         std::size_t pending=0;
         std::uint64_t submitted=0;
         roboframe::TransformStatus2D transforms;
+        std::chrono::steady_clock::time_point odometry_received;
     };
     struct Events {
         bool has_odom=false, has_correction=false, has_tf=false;
@@ -43,7 +53,7 @@ public:
         roboframe::TransformStatus2D tf;
     };
     SensorIngress(Options options, odom::PassthroughOdomComponent& odom,
-                slam::RecordedSlamComponent& slam, posegraph::PoseGraphComponent& graph, Sink sink);
+                slam::RecordedSlamComponent& slam, posegraph::PoseGraphComponent& graph, TransformSink transforms={});
     void Open(std::uint64_t generation);
     void Close() noexcept;
     void Clear(); // Closed ingress and quiescent execution required.
@@ -51,7 +61,9 @@ public:
     void PushReference(const roboframe::MapPose2D& pose);
     void PushScan(roboframe::Scan2DPtr scan);
     void OnOdometry(const roboframe::TimedPose2D& pose); // Synchronous under ingress lock.
-    void OnLocalization(const roboframe::MapPose2D& pose);
+    void OnLocalization(const roboframe::MapPose2D& pose); // Localization worker only.
+    LocalizationExecution& execution() { return localization_; }
+    const LocalizationExecution& execution() const { return localization_; }
     void BeginTag(std::uint64_t tag);
     State EndTag(bool flush); // Task fence, never closes continuous admission.
     State status() const;
@@ -59,21 +71,30 @@ public:
 private:
     struct Pending { roboframe::Scan2DPtr scan; std::uint64_t tag; };
     void MatchScans(std::uint64_t generation);
+    LidarInput Localize(const ScanWork& input,const roboframe::Cancellation& cancel);
+    void RefreshTransforms();
     void Drop(std::uint64_t tag, bool sync);
     State StateLocked() const;
     roboframe::InputGate gate_;
     const Options options_;
-    const Sink sink_;
+    const TransformSink transform_sink_;
     PoseBuffer poses_;
     odom::PassthroughOdomComponent& odometry_;
     slam::RecordedSlamComponent& slam_;
     posegraph::PoseGraphComponent& graph_;
+    LocalizationExecution localization_;
     std::deque<Pending> pending_;
+    std::deque<roboframe::MapPose2D> references_;
+    roboframe::TimedPose2D latest_odom_,working_odom_;
+    roboframe::MapCorrection2D correction_;
+    bool has_odom_=false,has_correction_=false,worker_has_correction_=false;
+    std::int64_t last_reference_=-1;
     std::uint64_t submitted_=0, tag_=0;
     Counts counts_;
     DataFlowStatus resources_;
     roboframe::TransformStatus2D transforms_;
     std::int64_t last_scan_=-1;
     Events events_;
+    std::chrono::steady_clock::time_point odometry_received_;
 };
 } // namespace demo_robot

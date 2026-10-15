@@ -2,14 +2,15 @@
 
 C++14 的机器人算法框架：interface → integration → component。
 当前产品 **demo_robot** 用已有 odom、scan 和修正位姿验证持续数据流与可选建图任务；
-不包含真实 SLAM、Brain、BT 或导航闭环。当前不使用 submodule。
+SDK Server 统一单次/周期执行与取消，可选 BT 编排建图和导航任务；PlannerComponent 规划路径，ControllerComponent 独立计算未被设备消费的速度。
+不包含真实 SLAM、Brain 或实机运动闭环。当前不使用 submodule。
 
 ## 从哪里读
 
-1. [架构与新产品接入](docs/architecture.md)：职责、线程、生命周期、数据共享。
-2. [骨架图](docs/runtime-architecture.svg)，再读 products/demo_robot/main.cpp。
-3. [demo_robot 示例产品](docs/demo_robot.md)：组件接线、坐标和真实数据验证。
-4. [IPC 协议](docs/ipc.md)、[SDK 规则与模板](sdk/README.md)。
+1. [完整架构图与新产品接入](docs/architecture.md)：组件持有 Server、BT 边界、线程及开发分工。
+2. [SDK 接口与模板](sdk/README.md)：生命周期、执行器、共享类型及独立交付。
+3. [建图 demo](docs/demo_robot.md)、[导航 demo](docs/navigation-demo.md)：产品数据和运行方法。
+4. [IPC 协议](docs/ipc.md)：命令、事件、独立发送及关闭规则。
 5. [TODO](TODO.md)：当前边界与下一步；新 agent 先读 [AGENTS.md](AGENTS.md)。
 
 ~~~text
@@ -18,7 +19,7 @@ interface/                   通用 stdio 传输，不认识产品或组件
 products/demo_robot/         示例产品：依赖选择、main、integration、任务与数据接线
   contract/                  独立公开的产品契约，不属于 SDK
   interface/                 stdio v4 协议适配，只依赖公开契约和传输
-components/                  六个可独立构建的算法/地图组件
+components/                  八个可独立构建的算法/地图/导航组件
 data/intel-lab/               录制数据和来源说明
 tests/                       产品、IPC、并发与独立交付验证
 tools/mapping/               Python 回放与地图查看
@@ -53,7 +54,7 @@ ctest --test-dir build-odom --output-on-failure
 cmake --install build-odom --prefix "$PWD/build-packages"
 ~~~
 
-其他五组件同样安装后，可只使用头文件和库；也可只开发某个组件：
+其他七组件同样安装后，可只使用头文件和库；也可只开发某个组件：
 
 ~~~sh
 cmake -S . -B build-packaged -DROBOFRAME_USE_INSTALLED_COMPONENTS=ON   -DCMAKE_PREFIX_PATH="$PWD/build-packages"

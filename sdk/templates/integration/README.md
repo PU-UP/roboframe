@@ -16,3 +16,13 @@ cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/sdk
 cmake --build build
 ctest --test-dir build --output-on-failure
 ~~~
+
+## Server + BT 模板
+
+server_product.hpp 展示更接近产品的骨架：Component 持有 Server 执行器，UseServer 登记组件，ServerAction 通过 server() 适配调用，
+Sequence 编排任务；server_check.cpp 验证取消、独立周期和停止重启。
+示例处理整数只是为了独立运行验证，不是新增算法组件。
+
+组件开发者填写 Goal/Feedback/Result 和 start/step/finish；产品开发者替换组件类型、
+连接输入端口、填写树与结果处理。线程、周期、取消交接直接复用 SDK。
+安装构建同时验证两个模板，Server 示例显式依赖 Roboframe::orchestration。

@@ -2,12 +2,13 @@ add_subdirectory(contract)
 add_subdirectory("${PROJECT_SOURCE_DIR}/interface" "${PROJECT_BINARY_DIR}/interface")
 
 add_library(demo_robot_integration
-    demo_robot_integration.cpp tasks/mapping.cpp data_flow/wiring.cpp
+    demo_robot_integration.cpp tasks/mapping.cpp tasks/navigation.cpp data_flow/wiring.cpp
     data_flow/sensor_ingress.cpp data_flow/pose_buffer.cpp data_flow/result_dispatch.cpp)
 target_include_directories(demo_robot_integration PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(demo_robot_integration PUBLIC DemoRobot::contract
+    PRIVATE Roboframe::orchestration
     PRIVATE Odom::component Slam::component PoseGraph::component
-    LocalMapBuilder::component MapUpdater::component MapServer::component)
+    LocalMapBuilder::component MapUpdater::component MapServer::component Planner::component Controller::component)
 
 add_library(demo_robot_stdio interface/demo_stdio_interface.cpp)
 target_include_directories(demo_robot_stdio PUBLIC ${PROJECT_SOURCE_DIR})
@@ -21,6 +22,22 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(robot_runtime PRIVATE -Wall -Wextra -Wpedantic -pedantic-errors)
 endif()
 if(BUILD_TESTING)
+    add_executable(control_output_test ../../tests/control_output_test.cpp)
+    target_link_libraries(control_output_test PRIVATE demo_robot_integration demo_robot_stdio MapServer::component)
+    add_test(NAME control_output_test COMMAND control_output_test)
+    set_tests_properties(control_output_test PROPERTIES TIMEOUT 10)
+    add_executable(localization_execution_test ${PROJECT_SOURCE_DIR}/tests/localization_execution_test.cpp)
+    target_link_libraries(localization_execution_test PRIVATE demo_robot_integration)
+    add_test(NAME localization_execution_test COMMAND localization_execution_test)
+    set_tests_properties(localization_execution_test PROPERTIES TIMEOUT 10)
+    add_executable(navigation_test ${PROJECT_SOURCE_DIR}/tests/navigation_test.cpp)
+    target_link_libraries(navigation_test PRIVATE demo_robot_integration MapServer::component)
+    add_test(NAME navigation_test COMMAND navigation_test)
+    set_tests_properties(navigation_test PROPERTIES TIMEOUT 15)
+    add_executable(mapping_bt_test ${PROJECT_SOURCE_DIR}/tests/mapping_bt_test.cpp)
+    target_link_libraries(mapping_bt_test PRIVATE demo_robot_integration)
+    add_test(NAME mapping_bt_test COMMAND mapping_bt_test)
+    set_tests_properties(mapping_bt_test PROPERTIES TIMEOUT 15)
     add_executable(submap_pipeline_test ${PROJECT_SOURCE_DIR}/tests/submap_pipeline_test.cpp)
     target_link_libraries(submap_pipeline_test PRIVATE Odom::component Slam::component PoseGraph::component LocalMapBuilder::component MapUpdater::component)
     add_test(NAME submap_pipeline_test COMMAND submap_pipeline_test)

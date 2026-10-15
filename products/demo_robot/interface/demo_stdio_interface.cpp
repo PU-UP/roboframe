@@ -50,12 +50,29 @@ void DemoStdioInterface::Send(const std::string& message) {
     if (request_id_) channel_.Queue("RES " + std::to_string(request_id_) + " " + message);
 }
 void DemoStdioInterface::Event(const std::string& message, const std::string& key) {
+    std::lock_guard<std::mutex> lock(event_mutex_);
     if (subscribed_) channel_.Queue("EVENT " + std::to_string(++event_id_) + " " + message, key);
 }
 namespace {
 std::string PoseText(const Pose2D& pose) {
     std::ostringstream out; out << std::setprecision(17) << pose.x << ' ' << pose.y << ' ' << pose.yaw;
     return out.str();
+}
+const char* NavigationPhaseName(NavigationPhase phase) {
+    switch (phase) {
+        case NavigationPhase::idle: return "idle";
+        case NavigationPhase::planning: return "planning";
+        case NavigationPhase::following: return "following";
+        case NavigationPhase::canceling: return "canceling";
+        case NavigationPhase::succeeded: return "succeeded";
+        case NavigationPhase::failed: return "failed";
+        case NavigationPhase::canceled: return "canceled";
+    }
+    return "unknown";
+}
+std::string NavigationText(const NavigationStatus& s) {
+    return std::string("NAV ")+NavigationPhaseName(s.phase)+" "+std::to_string(s.session)+" "+
+        std::to_string(s.generation)+" "+(s.reason.empty() ? "-" : s.reason);
 }
 std::string MapText(const MapView& view) {
     const auto& g = *view.grid;
@@ -103,6 +120,17 @@ DemoRobotOutputs DemoStdioInterface::Outputs() {
             std::to_string(value.status.integrated) + " " + std::to_string(value.status.dropped) + " " +
             (value.name.empty() ? "-" : value.name), value.kind == MappingEventKind::progress ? "progress" : "");
     };
+    output.navigation = [this](const NavigationStatus& value) { Event(NavigationText(value)); };
+    output.path = [this](const NavigationPath& value) {
+        Event("PATH "+std::to_string(value.session)+" "+std::to_string(value.generation)+" "+
+            std::to_string(value.path->map_revision)+" "+std::to_string(value.path->poses.size()));
+    };
+    output.velocity = [this](const VelocityCommand& value) {
+        std::ostringstream out;
+        out << std::setprecision(17) << "CMD_VEL " << value.session << ' ' << value.generation << ' '
+            << value.sequence << ' ' << value.pose_stamp_us << ' ' << value.velocity.linear << ' ' << value.velocity.angular;
+        Event(out.str(),"cmd_vel");
+    };
     return output;
 }
 std::string DemoStdioInterface::Status() const {
@@ -124,6 +152,7 @@ bool DemoStdioInterface::Dispatch(const std::string& line) {
     if (command == "SUBSCRIBE") {
         std::string value; input >> value; End(input);
         if (value != "ON" && value != "OFF") throw std::invalid_argument("expected ON or OFF");
+        std::lock_guard<std::mutex> lock(event_mutex_);
         subscribed_ = value == "ON";
         if (!subscribed_) channel_.DropTelemetry();
         Send("OK SUBSCRIBE"); return true;
@@ -166,6 +195,8 @@ bool DemoStdioInterface::Dispatch(const std::string& line) {
         const auto s = Invoke("RESOURCES", inputs_.diagnostics.resources);
         std::ostringstream out;
         out << "RESOURCES";
+        out << " localization_retained=" << s.localization_retained << " localization_active=" << s.localization_active
+            << " localization_results=" << s.localization_results << " pipeline_pending=" << s.pipeline_pending;
         out << " compute_pending=" << s.compute_pending << " compute_active=" << s.compute_active
             << " compute_results=" << s.compute_results << " compute_retained=" << s.compute_retained
             << " compute_peak_retained=" << s.compute_peak_retained << " compute_rejected=" << s.compute_rejected
@@ -183,6 +214,26 @@ bool DemoStdioInterface::Dispatch(const std::string& line) {
         out << " table_bytes=" << s.table_bytes;
         Send(out.str());
         return true;
+    }
+    if (command == "NAVIGATE") {
+        NavigationGoal goal;goal.session=Unsigned(input);
+        goal.pose.x=Number(input);goal.pose.y=Number(input);goal.pose.yaw=Number(input);End(input);
+        Invoke("NAVIGATE",inputs_.navigation.start,goal);Send("ACCEPTED NAVIGATE");return true;
+    }
+    if (command == "NAV_CANCEL") {
+        End(input);Invoke("NAV_CANCEL",inputs_.navigation.cancel);Send("OK NAV_CANCEL");return true;
+    }
+    if (command == "NAV_STATUS") {
+        End(input);Send(NavigationText(Invoke("NAV_STATUS",inputs_.navigation.status)));return true;
+    }
+    if (command == "GET_PATH") {
+        End(input);const auto view=Invoke("GET_PATH",inputs_.navigation.path);
+        if (!view.path) throw std::logic_error("navigation path unavailable");
+        std::ostringstream out;
+        out << std::setprecision(17) << "PATH " << view.session << ' ' << view.generation << ' '
+            << view.path->map_revision << " map " << view.path->poses.size();
+        for (const auto& pose:view.path->poses) out << ' ' << PoseText(pose);
+        Send(out.str());return true;
     }
     if (command == "RUN" || command == "STOP" || command == "RESET") {
         End(input);

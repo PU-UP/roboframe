@@ -15,7 +15,7 @@ void Drain(DemoRobotIntegration& robot) {
     const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);
     do {
         robot.Poll();
-        if (!robot.data_flow_status().compute_retained) { robot.Poll(); return; }
+        if (!robot.data_flow_status().pipeline_pending) { robot.Poll(); return; }
         Check(std::chrono::steady_clock::now()<until);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     } while (true);

@@ -1,0 +1,13 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+if(NOT TARGET Roboframe::sdk)
+    find_dependency(RoboframeSDK CONFIG)
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/ControllerTargets.cmake")
+get_target_property(component_sdk Controller::component ROBOFRAME_BUILT_WITH_SDK)
+get_target_property(host_sdk Roboframe::sdk ROBOFRAME_SDK_VERSION)
+string(REGEX MATCH "^[0-9]+" component_major "${component_sdk}")
+string(REGEX MATCH "^[0-9]+" host_major "${host_sdk}")
+if(NOT component_major STREQUAL host_major OR host_sdk VERSION_LESS component_sdk)
+    message(FATAL_ERROR "Controller built with SDK ${component_sdk}; selected SDK ${host_sdk} is incompatible")
+endif()

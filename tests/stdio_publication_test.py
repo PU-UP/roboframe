@@ -75,7 +75,7 @@ class Session:
         while True:
             fields = self.req('RESOURCES').split()[1:]
             values = dict(x.split('=') for x in fields)
-            if not int(values['compute_retained']): return
+            if not int(values['pipeline_pending']): return
             if time.monotonic() >= deadline: raise TimeoutError('compute timeout')
             time.sleep(0.001)
 

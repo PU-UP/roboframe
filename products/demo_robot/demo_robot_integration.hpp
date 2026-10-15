@@ -2,6 +2,7 @@
 #include <roboframe/datatype/scan2d.hpp>
 #include <roboframe/core/integration.hpp>
 #include <demo_robot/mapping.hpp>
+#include <demo_robot/navigation.hpp>
 #include <demo_robot/config.hpp>
 #include <demo_robot/diagnostics.hpp>
 #include <roboframe/datatype/transforms2d.hpp>
@@ -28,6 +29,10 @@ public:
     void StartMapping(std::uint64_t id);
     void FinishMapping(); // Accept finish; finished/failed event is emitted by Poll.
     void CancelMapping();
+    void Navigate(NavigationGoal goal);
+    void CancelNavigation();
+    NavigationStatus navigation_status() const;
+    NavigationPath navigation_path() const;
     void SaveMap(const std::string& name);
     void SnapshotMap(const std::string& name); // Inspection checkpoint; does not finish mapping.
     void LoadMap(const std::string& name);

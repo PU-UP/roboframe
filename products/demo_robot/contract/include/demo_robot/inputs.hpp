@@ -26,6 +26,12 @@ struct MappingRequests {
     std::function<void()> finish, cancel;
     std::function<MappingReport()> status;
 };
+struct NavigationRequests {
+    std::function<void(NavigationGoal)> start;
+    std::function<void()> cancel;
+    std::function<NavigationStatus()> status;
+    std::function<NavigationPath()> path;
+};
 struct MapRequests {
     std::function<void(const std::string&)> save, load, snapshot;
     std::function<MapView(bool baseline)> view;
@@ -44,6 +50,7 @@ struct DemoRobotInputs {
     RuntimeRequests runtime;
     SensorInputs sensors;
     MappingRequests mapping;
+    NavigationRequests navigation;
     MapRequests maps;
     DiagnosticRequests diagnostics;
 };

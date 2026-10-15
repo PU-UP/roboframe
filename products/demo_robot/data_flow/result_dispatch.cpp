@@ -36,7 +36,10 @@ DataFlowStatus DemoRobotIntegration::Impl::Resources() const {
     result.pose_nodes=input.pose_nodes; result.history_rejected=input.history_rejected;
     result.slam_scans=input.slam_scans; result.correction_outputs=input.correction_outputs;
     result.missed_references=input.missed_references; result.tf_dropped=input.tf_dropped;
-    result.compute_rejected=input.compute_rejected;
+    result.compute_rejected+=input.compute_rejected;
+    const auto localization=inputs_.execution().status();
+    result.localization_retained=localization.retained;result.localization_active=localization.active;
+    result.localization_results=localization.completed;result.pipeline_pending=state.submitted-completed_;
     const auto work=computation_.status();
     result.compute_pending=work.queued; result.compute_active=work.active;
     result.compute_results=work.completed; result.compute_retained=work.retained;

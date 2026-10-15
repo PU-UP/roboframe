@@ -64,13 +64,13 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
     configure(prefix / 'share/roboframe/sdk/templates/integration', work / 'template-build', prefix)
     verify(work / 'template-build')
     checks.append('PASS: installed integration template builds and tests with SDK only')
-    for name in ['odom', 'slam', 'posegraph', 'localmapbuilder', 'map-updater', 'map-server']:
+    for name in ['odom', 'slam', 'posegraph', 'localmapbuilder', 'map-updater', 'map-server', 'planner', 'controller']:
         source = work / name
         copy(ROOT / 'components' / name, source)
         configure(source, work / (name + '-build'), prefix)
         verify(work / (name + '-build'))
         run(['cmake', '--install', work / (name + '-build'), '--prefix', prefix])
-    checks.append('PASS: all 6 components independently build/test/install with SDK only')
+    checks.append('PASS: all 8 components independently build/test/install with SDK only')
 
     app = work / 'app'
     app.mkdir()
@@ -138,7 +138,7 @@ with tempfile.TemporaryDirectory(prefix='roboframe-mapping-build-') as directory
 
     # Installed manifests describe the package build, not the consumer's current SDK.
     sdk_version = field(sdk / 'VERSION', 'ROBOFRAME_SDK_VERSION')
-    for name in ['odom', 'slam', 'posegraph', 'localmapbuilder', 'map-updater', 'map-server']:
+    for name in ['odom', 'slam', 'posegraph', 'localmapbuilder', 'map-updater', 'map-server', 'planner', 'controller']:
         manifest = relocated / 'share/roboframe' / name / 'VERSION'
         assert field(manifest, 'component_name') == name
         assert field(manifest, 'component_built_with_sdk') == sdk_version

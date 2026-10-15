@@ -22,6 +22,10 @@ demo_robot::DemoRobotInputs BindProduct(demo_robot::DemoRobotIntegration& produc
         const auto map = product.map();
         return demo_robot::MappingReport{product.mapping_status(), product.pending(), map ? map->revision : 0};
     };
+    inputs.navigation.start = [&](demo_robot::NavigationGoal goal) { product.Navigate(goal); };
+    inputs.navigation.cancel = [&] { product.CancelNavigation(); };
+    inputs.navigation.status = [&] { return product.navigation_status(); };
+    inputs.navigation.path = [&] { return product.navigation_path(); };
     inputs.maps.save = [&](const std::string& name) { product.SaveMap(name); };
     inputs.maps.load = [&](const std::string& name) { product.LoadMap(name); };
     inputs.maps.snapshot = [&](const std::string& name) { product.SnapshotMap(name); };
@@ -57,8 +61,8 @@ int main(int argc, char** argv) {
             integration.Shutdown(); // This product stops on QUIT/EOF; transport only reports the event.
             interface.Finish();
         } catch (...) {
-            integration.SetOutputs({});
             integration.Shutdown();
+            integration.SetOutputs({});
             throw;
         }
         integration.SetOutputs({});

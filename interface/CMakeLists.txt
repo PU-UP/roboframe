@@ -1,3 +1,5 @@
+find_package(Threads REQUIRED)
 add_library(roboframe_stdio_transport stdio_channel.cpp)
+target_link_libraries(roboframe_stdio_transport PUBLIC Threads::Threads)
 target_include_directories(roboframe_stdio_transport PUBLIC "${PROJECT_SOURCE_DIR}")
 target_compile_features(roboframe_stdio_transport PUBLIC cxx_std_14)

@@ -266,7 +266,7 @@ class Host:
         deadline = time.monotonic() + 30
         while True:
             state = self.resources()
-            if not state['compute_retained']:
+            if not state['pipeline_pending']:
                 return
             if time.monotonic() >= deadline:
                 raise TimeoutError('compute drain timeout')
@@ -408,6 +408,7 @@ def run(args):
             displayed = record.get('display_pose', record['pose'])
             trajectory.append([t, displayed[0] if displayed else None, displayed[1] if displayed else None])
             if use_tf and ('map_reference' in record or scan_number % 100 == 0):
+                host.wait_idle()
                 response = host.send('TF').split()
                 if displayed is None:
                     if response != ['TF', 'unavailable']:
@@ -458,7 +459,7 @@ def run(args):
                 after['ignored'] != 0 or after['used_rays'] == 0):
             raise RuntimeError('workflow accounting mismatch')
         if (resources['live_updates'] != count - finish or resources['live_dropped'] or live_grid['revision'] != count - after['dropped'] or
-                resources['compute_retained'] or resources['submaps'] > 4096 or
+                resources['pipeline_pending'] or resources['submaps'] > 4096 or
                 resources['retained_points'] > 4000000 or resources['pose_nodes'] > 32768 or
                 resources['history_rejected']):
             raise RuntimeError('shared-resource or continued-update check failed')

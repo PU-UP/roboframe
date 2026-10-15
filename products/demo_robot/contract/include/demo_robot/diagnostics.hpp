@@ -3,6 +3,7 @@
 namespace demo_robot {
 // Product resource diagnostics; values are counts/bytes, never ownership-bearing pointers.
 struct DataFlowStatus {
+    std::uint64_t localization_retained=0, localization_active=0, localization_results=0, pipeline_pending=0;
     std::uint64_t compute_pending = 0, compute_active = 0, compute_results = 0, compute_retained = 0;
     std::uint64_t compute_peak_retained = 0, compute_rejected = 0, stale_results = 0;
     std::uint64_t slam_scans = 0, correction_outputs = 0, missed_references = 0, tf_dropped = 0;

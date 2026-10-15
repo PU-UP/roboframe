@@ -1,127 +1,140 @@
-# 架构：公共运行骨架与产品接线
+# 架构与新产品接入
 
-![运行骨架](runtime-architecture.svg)
+本页统一维护架构图与开发分工。产品行为见 [建图 demo](demo_robot.md)、[导航 demo](navigation-demo.md)；
+公共接口见 [SDK](../sdk/README.md)，线协议见 [IPC](ipc.md)。
 
-阅读顺序：products/demo_robot/main.cpp → sdk/include/roboframe/core/integration.hpp →
-products/demo_robot/demo_robot_integration.cpp → data_flow/wiring.cpp、sensor_ingress.cpp、
-result_dispatch.cpp → tasks/mapping.cpp。具体算法连接见 [demo_robot 示例产品](demo_robot.md)。
+## 完整架构与线程
 
-## 职责与依赖
+SDK 是被各层引用的库，不是独立线程：core 提供 Integration、Server、InputGate、ExecutionChannel；
+可选 orchestration 提供 Sequence、ServerAction；datatype 提供共享数据类型。
 
-| 层 | 拥有的职责 | 不应承担 |
-|---|---|---|
-| SDK core | Integration、InputGate、ExecutionChannel、基础生命周期与日志 | 产品协议、算法选择、通用消息总线 |
-| SDK datatype | 实际共享的数据语义、坐标、时间、只读所有权 | 产品配置与任务状态 |
-| interface | 传输、编解码、输入校验、响应和发布 | 创建具体 integration 或直接操作组件 |
-| 产品 integration | 配置装配、显式接线、跨组件关联、执行预算、任务编排 | 算法内部融合与估计 |
-| component | 具名输入输出、算法内部状态、局部配置与生命周期 | 其他组件、integration 或产品业务 |
-
-组件默认完整承担一项能力，不强迫把每个算法步骤拆成组件。
-Odom 是输出能力；VIOComponent、DRComponent、LIWComponent 可以独立交付，各自满足产品的位姿要求。
-需要独立复用时，也可以把 DR、VIO、融合分别装配。高频融合估计仍由算法承担。
-能力、类、仓库、线程不必一一对应；普通扩展组件不受预定义能力清单限制。
-
-外部接口使用 **公开契约**：公共语义来自 SDK，产品请求来自产品 contract。
-demo_robot/contract 使用 demo_robot 命名空间及 DemoRobot::contract 目标。
-通用组件只链接 SDK，不自动获得产品契约头路径；定制组件可以显式依赖契约，但会成为产品相关组件。
-相同语义直接使用同一类型，不为分层强制转换。准入规则详见 [SDK](../sdk/README.md)。
-
-main 创建 integration，绑定具名输入回调和输出回调。
-通用 interface/stdio_channel 只处理传输；demo_robot/interface 适配产品协议，
-不包含或链接 integration 实现。另一产品沿用相同协议时可替换绑定；
-新增能力或不同协议需要相应适配，并不保证 interface 永远不改。
-
-## 运行、任务与组件生命周期
-
-- 运行状态 IDLE / RUNNING / ERROR 描述整个运行上下文。RUNNING 不要求有任务。
-- 任务状态只描述某次请求，例如建图的 mapping / finishing / ready。
-- 组件 active/inactive 描述启停；active 不等于定位有效或已有地图。
-
-Integration 实现 Start / Stop / Reset / Poll / Shutdown。产品填写配置、启动、停用、清理与结果处理钩子。
-Start 创建新 generation；Stop 关闭输入、失效执行、等待协作退出，再停用组件。
-Reset 先 Stop，再清产品工作状态，留在 IDLE；Shutdown 最终关闭，不允许重新 Start。
-派生类析构必须在成员销毁前 Shutdown，外部输出接收者的寿命也由产品入口管理。
-
-demo_robot 的 RUN 清工作 atlas、位姿历史、实时地图；已完成/加载的基准快照与文件保留。
-BEGIN 不清数据；CANCEL 不停组件；FINISH 只冻结有限任务边界的结果。
-STOP 不是无损暂停、保存或任务完成。具体保留策略属于产品，不能硬编码进 SDK。
-
-## 统一执行骨干
-
-~~~text
-interface → typed 输入 → InputGate → 轻量调用或有界 ExecutionChannel
-                                           ↓ 计算线程
-                                      typed 完成结果
-                                           ↓
-控制 owner：Poll → Dispatch → 下游接线 / 对外发布 / 可选任务反馈
+~~~mermaid
+flowchart TB
+    subgraph MAIN["T1 主线程：命令 / 生命周期 / Poll"]
+        IPC["interface 输入适配"]
+        INT["integration<br/>持有组件、任务与数据接线<br/>输入接纳 / Odom 透传"]
+        BT["产品 BT：ComputePath → FollowPath<br/>复用 SDK Sequence / ServerAction"]
+        MAP["基准地图<br/>FINISH 冻结 / MapServer 加载"]
+        IPC --> INT
+        INT --> BT
+        MAP -->|"地图与目标上下文"| BT
+    end
+    LOC["T2 定位通道<br/>RecordedSLAM + PoseGraph"]
+    BUILD["T3 建图通道<br/>LocalMapBuilder + MapUpdater"]
+    subgraph PLANNER["PlannerComponent · Component"]
+        PLAN["持有 SDK Server；算法在组件内<br/>T4 单次规划"]
+    end
+    subgraph CONTROLLER["ControllerComponent · Component"]
+        CTRL["持有 SDK Server；算法在组件内<br/>T5 默认 50ms 周期控制"]
+    end
+    TX["T6 interface 发送线程 → IPC<br/>有界队列；速度保留最新待发值"]
+    INT -->|"匹配 scan / odom / 参考位姿"| LOC
+    LOC -->|"定位结果，经主线程 Poll 交接"| BUILD
+    BUILD -->|"地图结果，经 Poll / FINISH"| MAP
+    INT -->|"最新 odom 推导 TF，经接线"| CTRL
+    LOC -->|"定位修正更新 TF，经接线"| CTRL
+    MAP -->|"UpdateMap 快照"| CTRL
+    BT -->|"server()：Submit 地图 / TF / 目标；Cancel"| PLAN
+    PLAN -->|"TakeResult：路径存入任务上下文"| BT
+    BT -->|"server()：Submit 路径；Cancel"| CTRL
+    CTRL -->|"GetStatus / TakeResult"| BT
+    CTRL -->|"速度回调直接入队，不经 Poll"| TX
+    IPC -->|"命令响应"| TX
+    INT -->|"常规事件"| TX
 ~~~
 
-| 边界 | 执行规则 |
-|---|---|
-| 传感器输入 | 允许并发；InputGate 保护短接纳操作，记录接纳 generation |
-| 生命周期、任务、查询、Poll | 同一个控制 owner；不允许直接并发调用 |
-| ExecutionChannel handler | 选定执行组的工作线程；可包含多个组件 |
-| Dispatch、产品输出回调 | 控制 owner；不得阻塞、重入或抛异常 |
+实线表示调用或经 integration 接线的数据流，不表示组件互相持有。
+integration 持有各组件；PlannerComponent / ControllerComponent **继承 Component，直接实现算法并持有 SDK Server 执行器**。
+算法状态和生命周期只有一份，不再嵌套另一个算法 Component。
+SDK Server 不继承 Component、不持有组件、不包含产品业务；普通组件可以完全不用它。
 
-输入接纳不等于计算完成。执行组容量包含排队、计算中、完成未领取结果；
-慢 Poll 不能造成结果无界增长。reject_newest 拒绝新工作；latest_pending 只替换待计算工作，
-适合允许跳帧的消费者，不能直接用于 IMU 积分或历史约束。
+Server 是按组件需求选择的能力，不是所有组件的必选基类或运行方式：
 
-InputGate 不是算法锁或对时器。禁止在短锁内等待计算、运行重算法、回调重入同一个 gate。
-产品可以为独立路径使用多个 gate；同一非线程安全算法的输入必须串行，或由算法明确保证同步。
-重算法按需配置独立执行组，避免一个全局 integration 工作线程阻塞所有模块；
-无需每组件一线程，也不为组件另写专属 worker。
+| 组件 | 当前执行方式 | 是否需要 Server |
+|---|---|---|
+| PlannerComponent / ControllerComponent | 单次目标 / 周期跟踪，由组件持有执行器 | 是，统一提交、取消与结果 |
+| Odom | 输入入口短锁下的同步轻量调用 | 否 |
+| RecordedSLAM / PoseGraph | integration 的定位 ExecutionChannel 串行执行 | 否 |
+| LocalMapBuilder / MapUpdater | integration 的建图 ExecutionChannel 串行执行 | 否 |
+| MapServer | 主线程同步资产操作 | 否 |
 
-关闭顺序是：CloseInputs → 执行组 Reset(0) → WaitIdle → 停用组件。
-运行结果携带 generation，Dispatch 丢弃旧代次；任务结果还携带任务标签。
-CANCEL 后旧任务计算仍可更新本次运行的实时数据，但不能修改新任务状态。
-FINISH 固定已提交边界，后续输入不延长任务。计算失败不保证事务回滚；
-demo_robot 进入 ERROR，恢复时清工作状态。第三方阻塞算法不能安全强杀。
+新增 Server 不改变普通 Component 接口，已有持续流组件不需要为 BT 改写；真实算法接入时再按执行语义决定。
 
-## 产品数据流文件的分工
+图中共六个线程。接线回调按来源线程执行：定位修正更新 TF 在定位线程；
+当前 odom 更新 TF 在输入调用线程（stdio demo 为主线程）；速度输出在控制线程。
+这些交接使用短锁端口或有界队列。建图使用扫描采集时刻的 TF；
+控制使用最新 odom 与有效定位修正，延迟扫描不能回退当前位姿。
 
-| 文件 | 内容 |
-|---|---|
-| sensor_ingress | 产品输入、校验、短锁内关联和轻量分发 |
-| wiring | integration 装配组件和连接计算端口 |
-| result_dispatch | 领取完成结果、下游分发与发布 |
-| tasks/ | 可选任务的状态与结果归属 |
+## 职责边界
 
-这些是产品内的阅读分区，不是四个必须继承的 SDK 类。
-SensorIngress 的 scan/odom 配对只适用于当前产品；相机/IMU 不应照搬这一等待关卡。
-跨组件时间关联由消费者需求决定；VIO 内部融合对时属于算法。
-SDK 提供可复用机制和 [可编译模板](../sdk/templates/integration/README.md)，不替产品决定走线。
-组件不知道 wiring 或其他组件的存在。
+| 层 | 直接负责 | 留给其他层 |
+|---|---|---|
+| SDK core | 生命周期、执行线程、周期、取消、状态/结果、有界数据流 | 算法、产品策略、IPC |
+| SDK 可选 BT | Sequence、ServerAction 的提交/查询/取消机制 | 具体树和任务语义 |
+| component | 算法、具名输入输出、自身生命周期；按需持有 Server | 其他组件、BT、integration 和产品 session |
+| integration | 选组件、配置、接线、任务状态、路径上下文、具体 BT 与失败策略 | 算法实现、重复实现调度器 |
+| interface | 契约编解码、订阅、背压、独立发送 | 调用组件或执行产品流程 |
 
-## 大数据与资源边界
+组件默认只依赖 SDK 和自身公开接口。interface 依赖公开产品 contract，
+由 main 绑定输入/输出，不包含 integration 实现或组件头。共享语义直接复用 SDK 类型，不为分层强制转换。
 
-Scan2DPtr 是 shared_ptr<const Scan2D>：解码一次，多消费者持有同一 payload。
-生产者发布后也不能通过可写别名修改它；需要修改的算法建立工作区。
-小 pose/transform 按值传递，按采集时刻关联，不拿最新 pose 替代。
+## BT 与能力调用
 
-GridSnapshot 持有不可变地图，GridCells 按块写时复制；实时更新不改变冻结或慢读者的旧快照。
-子图共享 scan，只复制有限的引用/相对位姿表。外部持有引用不能由 Stop 强制回收。
-这只解决进程内共享；IPC 完整地图仍需要序列化。
+BT 在主线程只操作组件的 server()：Submit、GetStatus、TakeResult、RequestCancel。
+耗时规划和周期控制由执行器线程调用算法，不在 BT Tick 中运行。
+ServerAction::Halt 请求取消，Drained 确认清理完成；Reset 不得遗弃仍执行的目标。
 
-当前产品预算：等待 scan 64（满时丢最旧）、odom 历史 512、计算容量 8（拒绝新工作）、
-每 scan 最多 2048 点、atlas 最多 4096 子图/400 万点、PoseGraph 最多 32768 节点。
-队列条目、单帧大小、组件历史、外部快照和 IPC 缓存须分别评估；目前没有全进程字节预算。
-文件保存/加载和完整地图编码仍同步；引入周期控制前必须隔离。
+导航树为 ComputePath → FollowPath。Planner 的不可变 Path2DPtr 进入产品任务上下文，
+再作为 Controller 目标提交；Planner 不直接调用 Controller。
+建图树为 Collect → Drain → Freeze；持续传感器流不经 BT。
+当前 Sequence 只有记忆式顺序执行、失败短路和 Halt，没有 XML、反应式分支或自动恢复。
 
-## 新增产品
+## 生命周期与资源
 
-新建 products/<name>，从 SDK integration 模板开始，**不复制整套 demo_robot 建图代码**：
+- Integration 的 Start / Stop / Reset / Poll / 查询由同一 owner 调用；传感器入口允许并发。
+  UseServer 注册组件生命周期，UseExecution 注册持续数据流通道；active 不代表定位有效或有任务。
+- 停止顺序：关闭输入、请求所有 Server 取消、失效数据流执行组、等待退出、停用组件；
+  Controller 清理时输出零速度，之后 interface 排空输出并关闭。接收者必须存活到组件停止。
+- Server 只接纳一个目标并保留一个未领取结果；周期跳过错过的时刻，不补发。
+  取消是协作式，清理完成后才报告终态，不能强杀阻塞算法。
+- 数据流完成结果携带 generation，Dispatch 丢弃旧代次；产品 session 标识业务任务。
+  CANCEL 不停止持续流；FINISH 固定有限接纳边界，后续输入不延长建图任务。
+  算法失败不保证事务回滚，demo 数据流故障进入 ERROR，恢复时清理工作状态。
+- InputGate 只保护接纳，不运行耗时算法。ExecutionChannel 容量包含排队、计算中及完成未领取结果；
+  reject_newest / latest_pending 按输入语义选择，IMU 等历史输入不能任意合并。
+- Scan2DPtr / Path2DPtr / GridSnapshot 为不可变共享数据；GridCells 按块写时复制。
+  这不是 IPC 零拷贝；外部引用、历史数据、传输缓存仍须分别限定预算。
 
-1. Dependencies.cmake 选择 SDK 和真实组件；CMakeLists.txt 定义自己的目标和测试。
-2. 定义必要的公开产品契约；公共数据已有语义则直接使用 SDK，不把产品配置追加到 SDK。
-3. integration 继承 Integration，装配组件、配置启动顺序、typed 输入和结果连接。
-4. 复用 InputGate、ExecutionChannel、Dispatch 和不可变数据机制；选择对时、过载、历史预算与清理策略。
-5. main 绑定合适的 interface，驱动 Poll，管理回调寿命与 Shutdown。
-6. 验证无任务持续运行、并发接纳、慢消费者、停止、迟到结果、资源上限及独立构建。
+主线程停顿时 Controller 计算、TF 超时检查、速度入队和发送继续；
+若 odom 输入也停流，则控制线程超时归零。任务状态需主线程恢复后领取结果再更新。
+共享 stdout 的大消息/慢读仍可能延迟速度，传输故障不承诺送达或设备停止。
 
-初期一对 integration.hpp/.cpp 即可，不强制分目录。没有建图任务就不实现 Mapping 入口。
-产品构建选项为 -DROBOFRAME_PRODUCT=<name>，各自使用独立 build 目录。
-当前第二产品只存在于隔离测试的临时夹具，不代表视觉产品已经实现。
+## 新产品开发者写什么
 
-未来可把 SDK、各组件、通用传输、各产品拆仓；当前目录和显式目标为此保留边界，
-尚未配置子仓库，也未提供独立产品契约包的跨版本兼容保证。
+从 [Server + BT 模板](../sdk/templates/integration/server_product.hpp) 起步；
+持续数据流参考 [输入模板](../sdk/templates/integration/product_integration.hpp)，不复制整个 demo_robot。
+
+| 新产品需要填写 | 导航 demo 的具体例子 | 可直接复用 |
+|---|---|---|
+| 依赖、配置与组件装配 | Dependencies.cmake；创建 Planner/Controller，UseServer 注册 | SDK 构建与生命周期机制；现有组件 |
+| 数据接线 | 地图/TF 放进规划目标；持续更新 Controller 输入；速度回调绑定 interface | 不可变路径/地图、执行器、有界输出队列 |
+| 任务与具体树 | Navigate/Cancel、session、路径上下文、ComputePath → FollowPath、失败处理 | Sequence、ServerAction，不重写工作线程或周期循环 |
+| 产品契约与入口 | main 绑定 contract 和 interface，管理回调寿命 | 同协议可复用适配器；不同协议写自己的编解码 |
+| 算法（仅换能力时） | Goal/Feedback/Result、start/step/finish、具名输入口、控制失效归零 | SDK Server 的线程、调度、协作取消与结果交接 |
+
+integration 模板是可复制的装配示例，不是新的中间基类。
+初期一对 integration.hpp/.cpp 即可，sensor_ingress / wiring / tasks 只是 demo 的阅读分区。
+只做导航无需复制建图任务，也无需照搬录制 scan/odom 的配对规则。
+新产品仍需选择对时、过载、资源保留和故障策略。
+
+代码阅读入口：[装配](../products/demo_robot/data_flow/wiring.cpp) →
+[导航任务](../products/demo_robot/tasks/navigation.cpp) →
+[Controller 组件](../components/controller/include/controller/controller_component.hpp) →
+[发送线程](../interface/stdio_channel.cpp)。
+
+## 验证入口
+
+[control_output_test](../tests/control_output_test.cpp) 检查主线程阻塞时真实管道持续收到速度、TF 超时/取消/停止归零；
+controller_execution_test 覆盖异常清理；server_test 覆盖取消、迟到反馈和周期。
+[build_isolation_test.py](../tests/build_isolation_test.py) 检查 SDK、八组件、安装模板和纯包/混合构建。
+运行方法见 [README](../README.md)；未完成项统一维护在 [TODO](../TODO.md)。

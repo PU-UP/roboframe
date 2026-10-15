@@ -1,6 +1,7 @@
 #pragma once
 #include <roboframe/core/execution.hpp>
 #include <roboframe/core/runtime.hpp>
+#include <roboframe/core/component.hpp>
 #include <vector>
 namespace roboframe {
 // Lifecycle, Poll and status have one control owner. Sensor ingress is a product-owned
@@ -18,6 +19,7 @@ public:
         try {
             ++status_.generation;
             for (auto& execution : executions_) execution.reset(status_.generation);
+            for (auto& server : servers_) server.activate();
             OnStart(status_.generation);
             status_.state = RuntimeState::running;
         } catch (...) {
@@ -40,6 +42,7 @@ public:
         if (closed_) return;
         Stop();
         for (auto& execution : executions_) execution.stop();
+        for (auto& server : servers_) server.shutdown();
         closed_ = true;
     }
 protected:
@@ -50,6 +53,14 @@ protected:
         executions_.push_back({[&channel](std::uint64_t g) { channel.Reset(g); },
                                [&channel] { channel.WaitIdle(); },
                                [&channel] { channel.Stop(); }});
+    }
+    // Optional capability: the component owns its executor and algorithm lifecycle.
+    template<class T>
+    void UseServer(T& server) {
+        if (closed_ || status_.generation) throw std::logic_error("bind server before starting");
+        servers_.push_back({[&server] { server.Activate(); },
+            [&server] { server.server().RequestDeactivate(); },[&server] { server.Deactivate(); },
+            [&server] { server.server().Shutdown(); }});
     }
     template<class Input, class Output, class Handler>
     void Dispatch(ExecutionChannel<Input, Output>& channel, std::size_t budget, Handler handler) {
@@ -79,14 +90,18 @@ protected:
 private:
     void Quiesce() {
         CloseInputs(); // Close concurrent ingress before invalidating computation.
+        for (auto& server : servers_) server.cancel();
         for (auto& execution : executions_) execution.reset(0);
         for (auto& execution : executions_) execution.wait();
+        for (auto& server : servers_) server.wait();
         OnStop(); // No handler is still mutating components.
     }
     struct Execution {
         std::function<void(std::uint64_t)> reset;
         std::function<void()> wait, stop;
     };
+    struct ServerLifecycle { std::function<void()> activate,cancel,wait,shutdown; };
+    std::vector<ServerLifecycle> servers_;
     std::vector<Execution> executions_;
     RuntimeStatus status_;
     bool closed_ = false;

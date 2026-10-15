@@ -20,12 +20,24 @@ StdioChannel::StdioChannel(int input, int output) : input_(input), output_(outpu
         ::fcntl(input_, F_SETFL, input_flags_);
         throw std::runtime_error("cannot configure IPC output");
     }
+    try { writer_=std::thread([this] { RunWriter(); }); }
+    catch (...) {
+        ::fcntl(input_, F_SETFL, input_flags_);
+        ::fcntl(output_, F_SETFL, output_flags_);
+        throw;
+    }
 }
 StdioChannel::~StdioChannel() {
+    {
+        std::lock_guard<std::mutex> lock(output_mutex_);
+        stopping_=true;output_changed_.notify_all();
+    }
+    if (writer_.joinable()) writer_.join();
     ::fcntl(input_, F_SETFL, input_flags_);
     ::fcntl(output_, F_SETFL, output_flags_);
 }
 void StdioChannel::Queue(std::string line, std::string key) {
+    std::lock_guard<std::mutex> lock(output_mutex_);
     if (!failure_.empty()) return;
     if (!key.empty()) {
         for (auto it = pending_.begin(); it != pending_.end(); ++it) {
@@ -42,8 +54,10 @@ void StdioChannel::Queue(std::string line, std::string key) {
     bytes_ += line.size(); peak_bytes_ = std::max(peak_bytes_, bytes_);
     if (key.empty()) ++reliable_;
     pending_.push_back({std::move(line), std::move(key)});
+    output_changed_.notify_all();
 }
 void StdioChannel::DropTelemetry() {
+    std::lock_guard<std::mutex> lock(output_mutex_);
     for (auto it = pending_.begin(); it != pending_.end();) {
         if (!it->key.empty() && (it != pending_.begin() || offset_ == 0)) {
             bytes_ -= it->text.size(); it = pending_.erase(it);
@@ -57,7 +71,7 @@ void StdioChannel::Check() const {
 }
 void StdioChannel::Flush() {
     Check();
-    std::size_t budget = 65536; // Bound each turn so writes cannot starve incoming commands.
+    std::size_t budget = 65536; // Bound lock hold time for concurrent producers.
     while (!pending_.empty() && budget) {
         const auto& text = pending_.front().text;
         const auto n = ::write(output_, text.data() + offset_, std::min(budget, text.size() - offset_));
@@ -78,7 +92,9 @@ void StdioChannel::Flush() {
 bool StdioChannel::NextLine(std::string& line, const std::function<void()>& service) {
     for (;;) {
         service();
-        Flush();
+        {
+            std::lock_guard<std::mutex> lock(output_mutex_);Check();
+        }
         const auto end = input_buffer_.find('\n');
         const auto count = end == std::string::npos ? input_buffer_.size() : end;
         const auto keep = std::min(count, 65537 - partial_.size());
@@ -95,7 +111,7 @@ bool StdioChannel::NextLine(std::string& line, const std::function<void()>& serv
             if (!partial_.empty() || oversized_) throw InputError("incomplete line");
             return false;
         }
-        pollfd fds[] = {{input_, POLLIN, 0}, {output_, short(pending_.empty() ? 0 : POLLOUT), 0}};
+        pollfd fds[] = {{input_, POLLIN, 0}, {output_, 0, 0}};
         const auto ready = ::poll(fds, 2, 5);
         if (ready < 0) { if (errno == EINTR) continue; throw std::runtime_error("IPC poll failed"); }
         if (fds[1].revents & (POLLERR | POLLHUP | POLLNVAL))
@@ -111,19 +127,41 @@ bool StdioChannel::NextLine(std::string& line, const std::function<void()>& serv
         }
     }
 }
+void StdioChannel::RunWriter() noexcept {
+    std::unique_lock<std::mutex> lock(output_mutex_);
+    try {
+        while (!stopping_) {
+            Flush();
+            output_changed_.notify_all();
+            const bool pending=!pending_.empty();
+            lock.unlock();
+            pollfd fd{output_,short(pending ? POLLOUT : 0),0};
+            const auto ready=::poll(&fd,1,pending ? 5 : 0);
+            lock.lock();
+            if (ready<0 && errno!=EINTR) throw std::runtime_error("IPC poll failed");
+            if (fd.revents & (POLLERR|POLLHUP|POLLNVAL)) throw std::runtime_error("IPC output disconnected");
+            // Idle wait is notified by enqueue; a blocked pipe is polled without holding the lock.
+            if (!pending) output_changed_.wait_for(lock,std::chrono::milliseconds(5));
+        }
+    } catch (const std::exception& error) {
+        failure_=error.what();
+    } catch (...) {
+        failure_="IPC writer failed";
+    }
+    output_changed_.notify_all();
+}
 void StdioChannel::Drain() {
-    const auto deadline = Clock::now() + timeout;
+    std::unique_lock<std::mutex> lock(output_mutex_);
+    const auto deadline=Clock::now()+timeout;
     while (!pending_.empty()) {
-        Flush();
-        if (pending_.empty()) break;
-        if (Clock::now() >= deadline) throw std::runtime_error("IPC close drain timed out");
-        pollfd fd{output_, POLLOUT, 0};
-        if (::poll(&fd, 1, 50) < 0 && errno != EINTR) throw std::runtime_error("IPC poll failed");
-        if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) throw std::runtime_error("IPC output disconnected");
+        Check();
+        if (output_changed_.wait_until(lock,deadline)==std::cv_status::timeout && !pending_.empty())
+            throw std::runtime_error("IPC close drain timed out");
     }
     Check();
 }
 std::string StdioChannel::Status() const {
+    std::lock_guard<std::mutex> lock(output_mutex_);
     return "IPC_STATUS bytes=" + std::to_string(bytes_) + " peak_bytes=" + std::to_string(peak_bytes_) +
         " pending=" + std::to_string(pending_.size()) + " replaced=" + std::to_string(replaced_);
 }

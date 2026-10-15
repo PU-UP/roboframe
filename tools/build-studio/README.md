@@ -10,7 +10,7 @@ ARM 仅预览，需要工具链、sysroot 和目标架构开发包后再接入�
 配置 JSON 仅用于记录，CMake 暂不直接读取。
 校验：node tools/build-studio/check.cjs。
 
-将来组件清单稳定后再让 CMake 和页面共享清单；当前六个组件手工登记，
+将来组件清单稳定后再让 CMake 和页面共享清单；当前八个组件手工登记，
 不增加插件发现、依赖下载器或后台服务。
 
 产品目录由 catalog 的 product 字段选择；生成 ROBOFRAME_PRODUCT，并按产品隔离构建目录。

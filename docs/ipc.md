@@ -28,7 +28,7 @@ v4 不兼容旧脚本的“CONFIG 后直接 BEGIN”，Python 回放已显式调
 
 DemoStdioInterface 只依赖 SDK + DemoRobot::contract；main 绑定输入/输出，驱动 ProcessNext 与 Poll。
 传输层复用、线程和关闭职责见 [架构](architecture.md)。当前产品在连接结束时停止组件，
-正常路径排空输出；异常路径先解除输出回调再关闭。interface 不自行调用 Shutdown。
+正常路径排空输出；异常路径先停止组件，再解除输出回调；传输失败不承诺送达。interface 不自行调用 Shutdown。
 
 ## 线协议
 
@@ -125,9 +125,10 @@ hex_cells 是行优先、y 向上的原始字节十六进制编码，0/254/205 �
 
 ## 背压、断连与关闭
 
-- 同一个串行 poll 循环负责收发；文件描述符设为 O_NONBLOCK，析构恢复原标志。
-  IPC 不增设发送线程；每轮最多写 64 KiB，随后处理输入并收取计算结果。空闲 poll 间隔最多 5 ms。
-- 队列最多 20 MiB 编码文本，可靠消息最多 256 项（包括正在发送的消息）；连续输出只有五种替换键。
+- 主线程接收请求并驱动 Poll；独立发送线程唯一写出 stdout，文件描述符为 O_NONBLOCK，析构恢复原标志。
+  发送队列支持并发入队；每轮最多写 64 KiB，等待管道可写时释放队列锁。空闲等待最多 5 ms。
+  Controller 速度回调直接入队，事件序号/订阅与入队串行化；速度仍只保留最新待发值。
+- 队列最多 20 MiB 编码文本，可靠消息最多 256 项（包括正在发送的消息）；连续输出有六种替换键（含 cmd_vel）。
   该上限不包括构造响应时的临时字符串、内核管道或地图本身，不是 RSS 上限。
 - 只替换尚未写出的同类数据；已写出部分的消息保持完整。输入顺序、scan 对时、地图生成不受替换影响。
 - 响应、开始/终态/保存等事件不能被遥测覆盖。可靠队列满则连接失败、停机并以非零码退出，stderr 说明原因。
@@ -136,9 +137,32 @@ hex_cells 是行优先、y 向上的原始字节十六进制编码，0/254/205 �
   输出管道读端关闭会被 poll/write 检出，不需要等下一条输入。
 - QUIT 或 stdin EOF 先关闭组件，允许剩余消息最多排空 2 秒。正常 QUIT 有 BYE；EOF 在运行时有 RUNTIME IDLE（活跃任务另发 stopped），但无 BYE。
   不隐式 FINISH/SAVE。截断的末行不执行，报告 ERROR 后关闭。失败路径解除回调并清理组件。
-- 这些时间检查在现有串行 integration 调用之间执行；文件写入仍可能阻塞调用线程，
+- 发送超时/断连检查由发送线程独立执行；文件写入仍可能阻塞命令调用线程，
   文件操作和大地图编码尚非异步；地图计算已独立执行且可协作取消，见 [执行边界](architecture.md)。这不代表硬实时支持。
 - IPC_STATUS 提供编码队列的 bytes/peak_bytes/pending/replaced，用于本机验收；不属于 SDK 算法状态。
+
+## 导航扩展
+
+所有命令继续使用 `REQ id ...`；速度输出需 `SUBSCRIBE ON`。stdio v4 为兼容扩展，不改原建图命令。
+
+| 请求 / 事件 | 格式 |
+|---|---|
+| NAVIGATE | `session goal_x goal_y goal_yaw`；目标固定为 map 坐标；返回 ACCEPTED NAVIGATE |
+| NAV_CANCEL | 无参数；接受取消请求，返回 OK NAV_CANCEL，等待 NAV canceled 确认 Server 退出 |
+| NAV_STATUS | 返回 `NAV phase session generation reason` |
+| GET_PATH | 返回 `PATH session generation map_revision map count x y yaw ...` |
+| EVENT NAV | `phase session generation reason`；可靠任务事件，reason 无内容时为 `-` |
+| EVENT PATH | `session generation map_revision count`；路径通知，完整路径通过 GET_PATH 获取 |
+| EVENT CMD_VEL | `session generation sequence pose_stamp_us linear angular`；保留最新未发值，包括零速度 |
+
+速度 sequence 区分同一采集位姿上的多次输出；pose_stamp_us 是传感器时钟，不是到期时间。
+这是一条供观察的演示输出，没有设备确认，不是带租约/硬件急停的安全执行协议。
+
+建图命令语义不变；速度无实际设备消费者，不构成设备停止确认。
+Controller 通过线程安全回调直接入队，stdio 独立发送，不依赖主线程 Poll。
+RESOURCES 的 localization_retained/active/results 和 pipeline_pending 覆盖异步定位；
+等待全链路完成应看 pipeline_pending，compute_retained 仅表示建图阶段。
+导航的地图与任务规则见 [导航 demo](navigation-demo.md)。
 
 ## 验证
 

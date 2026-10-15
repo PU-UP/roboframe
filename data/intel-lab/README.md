@@ -57,7 +57,9 @@ python3 tests/intel_reference_check.py build-product/corrected-reference/live.rf
 
 ## 接入边界与规划使用
 继续复用 Python → IPC → interface → integration → odom / SLAM / PoseGraph / LocalMapBuilder / MapUpdater → MapServer。
-通过 RecordedSlamComponent 模拟修正位姿输出，没有增加真实 SLAM、导航或 BT 实现。
+通过 RecordedSlamComponent 模拟修正位姿输出，没有增加真实 SLAM。
+[导航 demo](../../docs/navigation-demo.md) 已用此参考地图接入简单 Planner/Controller；速度无人消费，TF 为显式静止测试输入，不声称运动闭环。
+建图任务现由产品内最小 BT 编排，数据来源与几何处理不变，见 [架构与 BT 边界](../../docs/architecture.md)。
 
 当前接入独立 SLAM、PoseGraph、LocalMapBuilder 与完整 TF：raw odom 与 corrected pose 分开输入，地图显式标记 map 坐标。
 `--dataset corrected` 回放匹配的 910 帧，`--dataset tf` 回放全部原始扫描并稀疏校正；两者通过 SLAM 输出修正 pose，由 PoseGraph 计算 T_map_odom。
@@ -67,7 +69,7 @@ python3 tests/intel_reference_check.py build-product/corrected-reference/live.rf
 - live.rfgrid 包含回放末尾的实时地图；final.rfgrid 是 FINISH 边界的冻结结果。
 - 栅格字节 occupied=0、free=254、unknown=205，不是 ROS 的 -1/0/100。
 - 存储栅格 y 向上，PNG 顶部为 +y；起点和目标必须与地图坐标系一致。
-- 原图尚未膨胀；未来 planner 应维护自己的代价层，不能修改共享原图。
+- 原图尚未膨胀；当前 Planner 维护私有保守余量检查，不能修改共享原图。
 - intel_reference_check.py 只做离线连通性检查，不是运行时 planner 或实机安全验证。
 
 当前优先级统一见 [TODO](../../TODO.md)，不在数据文档另设开发路线。

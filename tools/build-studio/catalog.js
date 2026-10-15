@@ -14,10 +14,14 @@ globalThis.BuildCatalog = {
       implemented: true, package: "MapUpdater", target: "MapUpdater::component", sourcePath: "components/map-updater" },
     { id: "map-server", name: "Map server", description: "FileMapComponent · 地图保存与加载",
       implemented: true, package: "MapServer", target: "MapServer::component", sourcePath: "components/map-server" },
+    { id: "planner", name: "Planner", description: "PlannerComponent · 地图 A* 路径规划",
+      implemented: true, package: "Planner", target: "Planner::component", sourcePath: "components/planner" },
+    { id: "controller", name: "Controller", description: "ControllerComponent · TF 跟踪与速度输出",
+      implemented: true, package: "Controller", target: "Controller::component", sourcePath: "components/controller" },
   ],
   scenarios: [
     { id: "current", product: "demo_robot", name: "Demo robot", integration: "DemoRobotIntegration", buildReady: true,
-      components: ["odom", "slam", "posegraph", "localmapbuilder", "map-updater", "map-server"], defaults: ["SOURCE", "SOURCE", "SOURCE", "SOURCE", "SOURCE", "SOURCE"] }
+      components: ["odom", "slam", "posegraph", "localmapbuilder", "map-updater", "map-server", "planner", "controller"], defaults: ["SOURCE", "SOURCE", "SOURCE", "SOURCE", "SOURCE", "SOURCE", "SOURCE", "SOURCE"] }
   ],
   platforms: [
     { id: "linux-x86_64", name: "Linux x86_64 · 本机开发", buildReady: true,
