@@ -1,4 +1,7 @@
 #include <odom_session/session_integration.hpp>
+#include <odom_session/mission_integration.hpp>
+#include <chrono>
+#include <thread>
 #include "interface/stdio_channel.hpp"
 #include <cmath>
 #include <csignal>
@@ -86,11 +89,85 @@ void Run() {
     finish();
     channel.Drain();
 }
+
+int RunMission(double first, double second) {
+    roboframe::StdioChannel channel(STDIN_FILENO, STDOUT_FILENO);
+    odom_session::MissionIntegration mission([&](distance_goal::Progress progress) {
+        std::ostringstream line;
+        line << "PROGRESS active=" << progress.active << " meters=" << progress.meters
+             << " target=" << progress.target;
+        channel.Queue(line.str(), "mission-progress");
+    });
+    try {
+        mission.Start();
+        mission.Begin(first, second);
+        auto wait = [&](const std::function<bool()>& done) {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+            while (!done()) {
+                mission.Poll();
+                if (mission.state() == odom_session::MissionState::failed)
+                    throw std::runtime_error("mission failed");
+                if (std::chrono::steady_clock::now() >= deadline)
+                    throw std::runtime_error("mission drain timeout");
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        };
+        std::string line;
+        while (channel.NextLine(line, [&] {
+            mission.Poll();
+            if (mission.state() == odom_session::MissionState::failed)
+                throw std::runtime_error("mission failed");
+        })) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.compare(0, 5, "ODOM ") == 0) {
+                const auto pose = ParseOdom(line);
+                wait([&] { return mission.Push(pose) == roboframe::Admission::accepted; });
+            } else if (line == "MISSION cancel") {
+                mission.Cancel();
+            } else if (line.compare(0, 8, "MISSION ") == 0 || line.compare(0, 8, "SESSION ") == 0) {
+                throw std::runtime_error("mission mode accepts only MISSION cancel");
+            }
+        }
+        wait([&] { return mission.pending() == 0; });
+        if (mission.state() == odom_session::MissionState::running && mission.view().meters < second)
+            mission.Cancel(); // EOF cannot provide the remaining distance.
+        wait([&] {
+            return mission.state() != odom_session::MissionState::running &&
+                   mission.state() != odom_session::MissionState::canceling;
+        });
+        const bool success = mission.state() == odom_session::MissionState::succeeded;
+        mission.Stop(); // Wait for final inactive output before closing the writer.
+        const auto& sample = mission.view();
+        odom_session::SessionView summary;
+        summary.valid_samples = sample.count;
+        summary.has_pose = sample.count != 0;
+        summary.latest = sample.latest;
+        summary.distance_m = sample.meters;
+        channel.Queue(std::string("MISSION state=") + (success ? "succeeded" : "canceled") +
+                      " steps=" + std::to_string(mission.completed_steps()) + " " + Format(summary));
+        channel.Drain();
+        return success ? 0 : 2;
+    } catch (...) {
+        mission.Shutdown();
+        channel.Drain(); // Final inactive output must be flushed on input/algorithm errors too.
+        throw;
+    }
+}
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     std::signal(SIGPIPE, SIG_IGN);
     try {
+        if (argc == 4 && std::string(argv[1]) == "--mission") {
+            auto number = [](const char* text) {
+                std::size_t used = 0;
+                const double value = std::stod(text, &used);
+                if (used != std::string(text).size()) throw std::invalid_argument("invalid mission distance");
+                return value;
+            };
+            return RunMission(number(argv[2]), number(argv[3]));
+        }
+        if (argc != 1) throw std::invalid_argument("usage: odom_session [--mission first_m second_m]");
         Run();
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

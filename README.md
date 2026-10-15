@@ -1,14 +1,14 @@
 # roboframe
 
-C++14 机器人算法框架骨架。main 包含 odom 接入组件，尚无具体产品；
+C++14 机器人算法框架骨架。当前包含 odom 接入组件及 odom_session 产品，并可验证异步组件、Server 与 BT；
 完整建图/导航示例保存在 demo 分支。
 
 ~~~text
 sdk/                 可选运行机制、公共数据、BT 辅助及可编译模板
 interface/           通用 POSIX stdio 实现、独立发送线程与测试（未删除）
 cmake/               产品的 SOURCE/PACKAGE 组件选择
-components/          独立算法组件（当前含 odom）
-products/            空，留给新的产品接线、契约和 BT
+components/          独立算法组件（odom、path_distance、distance_goal）
+products/            产品接线、契约和 BT（当前含 odom_session）
 tests/               SDK 安装与产品/组件构建隔离检查
 data/                保留原始录制数据，不参与默认构建
 ~~~

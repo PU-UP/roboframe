@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
-add_library(odom_session_runtime STATIC src/session_integration.cpp)
+add_library(odom_session_runtime STATIC src/session_integration.cpp src/mission_integration.cpp)
 target_compile_features(odom_session_runtime PUBLIC cxx_std_14)
 target_include_directories(odom_session_runtime PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
-target_link_libraries(odom_session_runtime PUBLIC Odom::component)
+target_link_libraries(odom_session_runtime PUBLIC Odom::component PathDistance::component DistanceGoal::component Roboframe::orchestration)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(odom_session_runtime PRIVATE -Wall -Wextra -Wpedantic -pedantic-errors)
 endif()
@@ -23,6 +23,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(BUILD_TESTING)
+    add_executable(odom_mission_test tests/mission_integration_test.cpp)
+    target_link_libraries(odom_mission_test PRIVATE odom_session_runtime roboframe_stdio_transport)
+    add_test(NAME odom_mission_test COMMAND odom_mission_test)
+    set_tests_properties(odom_mission_test PROPERTIES TIMEOUT 15)
     add_executable(odom_session_integration_test tests/session_integration_test.cpp)
     target_link_libraries(odom_session_integration_test PRIVATE odom_session_runtime)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -43,6 +47,9 @@ if(BUILD_TESTING)
         $<TARGET_FILE:odom_session> "${session_log}" --check-corrupt)
     add_test(NAME odom_session_stop_restart COMMAND "${Python3_EXECUTABLE}" "${replay_check}"
         $<TARGET_FILE:odom_session> "${session_log}" --check-session)
+    add_test(NAME odom_mission_replay COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/mission_replay_test.py" $<TARGET_FILE:odom_session> "${session_log}")
+    set_tests_properties(odom_mission_replay PROPERTIES TIMEOUT 60)
     set_tests_properties(odom_session_replay odom_session_replay_corrupt_gzip odom_session_stop_restart
         PROPERTIES TIMEOUT 60)
 endif()

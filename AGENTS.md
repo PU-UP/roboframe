@@ -1,6 +1,6 @@
 # roboframe 开发入口
 
-main 是空产品骨架；完整导航/建图实现保存在 demo 分支。
+基于现有组件与产品继续开发；完整导航/建图历史实现保存在 demo 分支。
 工作前先看 git status，保留用户改动；build* 与 history 不代表当前源码。
 先读 README.md、docs/architecture.md、docs/sdk-review.md 和 sdk/README.md。
 开发或维护组件时读取 sdk/skills/roboframe-component/SKILL.md；
@@ -20,7 +20,7 @@ main 是空产品骨架；完整导航/建图实现保存在 demo 分支。
 - 组件析构前停止回调和后台执行；取消协作式，不承诺强杀。
 - SDK 不接纳产品协议/配置；不要预建新抽象或恢复整个 demo。
 - 数据共享保持不可变；队列、单帧、历史和外部快照分别设预算。
-- 主分支组件/产品目录保持空，直到用户开始其真实接入。
+- 复用已有组件与产品；不为验证新能力恢复整个历史 demo。
 
 验证：
     cmake -S . -B build-skeleton -DCMAKE_BUILD_TYPE=Debug
