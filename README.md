@@ -65,7 +65,8 @@ cmake --build build-dev -j4
 ctest --test-dir build-dev --output-on-failure
 ~~~
 
-该模式加载 SDK 和指定源码组件及其测试，无需产品；不会加载其他组件或通用 interface。
+该模式加载 SDK 和指定源码组件及其测试，无需产品；根工程不自动加载其他组件或通用 interface。
+组件的独立宿主程序可按需声明接入依赖，不需要 Integration。
 组件自己的 CMakeLists.txt 无需另写适配。SDK 可改用 PACKAGE 并设置 CMAKE_PREFIX_PATH；
 组件选择入口始终读取源码，产品的 SOURCE/PACKAGE 组件选择机制保持不变。
 ROBOFRAME_COMPONENT 与 ROBOFRAME_PRODUCT 互斥，名称非法或缺少组件 CMakeLists.txt 时直接报错。
@@ -88,7 +89,7 @@ VS Code 的 clangd.arguments 不再另设 --compile-commands-dir，避免覆盖 
 重新配置后 build-dev/compile_commands.json 会更新；跳转仍旧时重启 clangd language server。
 生成的 <namespace>/version.hpp 由数据库提供路径，不要手工追加 includePath。
 .clangd 与 .vscode/settings.json 的个人修改留在本地；.vscode/extensions.json 保留插件推荐。
-忽略规则仅作用于未跟踪文件；历史中已跟踪的编辑器配置仍须排除在提交之外。
+这两个个人配置文件已停止 Git 跟踪，并由忽略规则排除。
 独立安装验证可以使用临时目录，不改变日常索引目录，也不需要额外的切换脚本或符号链接。
 
 ## 开始一个真实产品

@@ -17,10 +17,11 @@ SDK 安装时同时放入 share/roboframe/sdk/skills/roboframe-component；
 所有技能共用 [反馈规范](skills/feedback-format.md)，每次使用记录背景、验证及遇到的问题；
 实例放仓库 .roboframe/feedback/（默认不提交），状态与评价由 SDK 维护者处理。
 
-组件无需 Integration 就能测试：测试程序创建组件，传入样本，以公开结果或回调断言。
+组件可由普通 main 直接使用和验证，输入可来自 interface、ROS、文件或测试数据，无需 Integration。
+宿主负责接入和格式转换，组件公开输入输出、线程与生命周期契约；README 给出最小调用示例。
 异步线程由组件自身管理；测试等待其结果，不靠产品 Poll 驱动算法。
 直接示例见 [component_check.cpp](templates/integration/component_check.cpp)。
-多组件接线、任务与 IPC 行为才在后续 integration 测试中验证。
+跨组件业务关系和产品任务编排另做集成验证。
 源码仓库可从根目录用 -DROBOFRAME_COMPONENT=<name> 选择单个源码组件，
 与 -DROBOFRAME_PRODUCT 互斥；日常开发使用固定 build-dev，具体命令见仓库 README。
 安装包用户继续使用组件自身的独立 CMake 入口。
@@ -83,7 +84,7 @@ Sequence 只有记忆式顺序执行、失败短路和 Halt；没有 XML、反�
 ServerAction 适配 Submit/GetStatus/TakeResult/RequestCancel；
 Halt 只请求取消，Drained 确认退出，Reset 不能遗弃在途工作。
 具体树、task/session、路径上下文、超时/重试/失败策略留产品。
-组件不包含 BT；interface 只编解码产品公开 contract。
+组件不包含 BT；interface 负责 IPC，宿主的适配代码将通信数据转换为组件或产品公开契约。
 
 ## 类型与交付
 
