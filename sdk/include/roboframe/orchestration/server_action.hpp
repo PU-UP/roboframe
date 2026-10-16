@@ -3,7 +3,8 @@
 #include <roboframe/orchestration/sequence.hpp>
 namespace roboframe { namespace bt {
 // BT owns only an operation handle. Halt requests cancellation; Drained confirms cleanup.
-// Goal preparation and business interpretation of results stay with the product.
+// One control owner calls Tick/Halt/Drained/Reset; it receives every terminal Result once.
+// Result callbacks must not throw or reenter the action/lifecycle; business interpretation stays in the product.
 template<class T>
 class ServerAction {
 public:
@@ -14,20 +15,19 @@ public:
     Status Tick() {
         if (terminal_!=Status::idle) return terminal_;
         if (!handle_) handle_=server_.Submit(goal_());
-        const auto status=server_.GetStatus(handle_);
-        if (ServerBusy(status.state)) return Status::running;
+        return Drained() ? terminal_ : Status::running;
+    }
+    void Halt() noexcept { if (handle_) server_.RequestCancel(handle_); }
+    // True means settled, not succeeded. Reset may also deliver via this method.
+    bool Drained() {
+        if (!handle_) return true;
+        if (ServerBusy(server_.GetStatus(handle_).state)) return false;
         Result result;
         if (!server_.TakeResult(handle_,result)) throw std::logic_error("server action result missing");
         handle_={};
         terminal_=result.state==TaskState::succeeded ? Status::success : Status::failure;
         if (result_) result_(result);
-        return terminal_;
-    }
-    void Halt() noexcept { if (handle_) server_.RequestCancel(handle_); }
-    bool Drained() {
-        if (!handle_) return true;
-        if (ServerBusy(server_.GetStatus(handle_).state)) return false;
-        Result ignored;server_.TakeResult(handle_,ignored);handle_={};return true;
+        return true;
     }
     void Reset() {
         if (!Drained()) throw std::logic_error("previous action is canceling");

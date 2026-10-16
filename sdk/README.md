@@ -88,7 +88,9 @@ OnStop/CloseInputs 和析构必须不抛异常，输出回调遵守各端口的�
 
 Sequence 只有记忆式顺序执行、失败短路和 Halt；没有 XML、反应式树或自动恢复。
 ServerAction 适配 Submit/GetStatus/TakeResult/RequestCancel；
-Halt 只请求取消，Drained 确认退出，Reset 不能遗弃在途工作。
+Halt 只请求取消；Tick/Drained 领取后通过结果回调一次性交付终态和 error（包括取消及收尾失败）。
+Drained 返回 true 仅表示已收尾，不表示成功；Reset 也可能通过 Drained 交付结果，不能遗弃在途工作。
+这些方法由同一控制线程调用，结果回调同步在该线程执行，不抛异常、不重入动作或生命周期。
 具体树、task/session、路径上下文、超时/重试/失败策略留产品。
 组件不包含 BT；interface 负责 IPC，宿主的适配代码将通信数据转换为组件或产品公开契约。
 

@@ -49,7 +49,9 @@ integration 实现、tests 和 README。开始时一个 integration 文件即可
 采用 Integration 时，按真实接口实现 OnStart、CloseInputs、OnStop、OnReset、OnPoll：
 生命周期与 Poll 由同一个控制 owner 调用；主循环持续驱动 Poll，阻塞收数不能饿死任务推进。
 停止先关闭输入并请求所有组件取消，再等待停用；RequestDeactivate 是组件可选接口，不是基类保证。
-BT Halt 只是取消请求，Drained 确认收尾后才能 Reset/复用动作。
+BT Halt 只是取消请求；ServerAction 在 Tick/Drained（含 Reset 内部）领取后回调一次完整 Result，包括取消与收尾异常。
+Drained 为 true 只表示收尾完成；产品根据 Result.state/error 判定结果，不额外查询终态。
+结果回调在同一控制 owner 上同步执行，须不抛异常、不重入动作或生命周期；收尾后才能复用动作。
 派生析构在成员销毁前调用 Shutdown；处理部分启动失败，CloseInputs/OnStop 不抛异常。
 回调接收者活到组件停止之后，再排空并关闭发送端；旧任务结果不得进入新任务。
 Poll 不自动捕获业务异常，产品须明确失败与停止策略，取消不承诺强杀阻塞算法。

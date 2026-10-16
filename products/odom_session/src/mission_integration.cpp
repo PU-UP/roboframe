@@ -9,9 +9,9 @@ MissionIntegration::MissionIntegration(distance_goal::DistanceGoalComponent::Out
               throw std::logic_error("distance admission changed");
       }),
       first_action_(goal_.server(), [this] { return first_; },
-          [this](const Execution::Result& r) { if (r.state == roboframe::TaskState::succeeded) ++completed_; }),
+          [this](const Execution::Result& r) noexcept { OnResult(r); }),
       second_action_(goal_.server(), [this] { return second_; },
-          [this](const Execution::Result& r) { if (r.state == roboframe::TaskState::succeeded) ++completed_; }),
+          [this](const Execution::Result& r) noexcept { OnResult(r); }),
       tree_({{"first distance", [this] { return first_action_.Tick(); }, [this] { first_action_.Halt(); }},
              {"second distance", [this] { return second_action_.Tick(); }, [this] { second_action_.Halt(); }}}) {}
 MissionIntegration::~MissionIntegration() { Shutdown(); }
@@ -22,18 +22,17 @@ roboframe::Admission MissionIntegration::Push(roboframe::TimedPose2D pose) {
     odom_.Push(pose); // Validate before submitting. A full queue never increments odom's count.
     return roboframe::Admission::accepted;
 }
-bool MissionIntegration::Drained() {
-    bool done = true;
-    for (auto* action : {&first_action_, &second_action_}) {
-        const auto handle = action->handle();
-        if (!handle) continue;
-        const auto status = goal_.server().GetStatus(handle).state;
-        if (roboframe::ServerBusy(status)) { done = false; continue; }
-        // Drained discards the Result, including finish errors. Preserve failure before consuming it.
-        if (status == roboframe::TaskState::failed) state_ = MissionState::failed;
-        action->Drained();
+void MissionIntegration::OnResult(const Execution::Result& result) noexcept {
+    if (result.state == roboframe::TaskState::succeeded) ++completed_;
+    if (result.state == roboframe::TaskState::failed) {
+        state_ = MissionState::failed;
+        error_ = result.error;
     }
-    return done;
+}
+bool MissionIntegration::Drained() {
+    const bool first = first_action_.Drained();
+    const bool second = second_action_.Drained();
+    return first && second;
 }
 void MissionIntegration::Begin(double first, double second, std::chrono::milliseconds timeout) {
     RequireRunning();
@@ -62,6 +61,7 @@ void MissionIntegration::OnStart(std::uint64_t) {
     view_ = {};
     completed_ = 0;
     state_ = MissionState::idle;
+    error_ = {};
     distance_.Activate();
     goal_.Activate();
     odom_.Activate();
@@ -80,7 +80,7 @@ void MissionIntegration::OnStop() noexcept {
     Drained();
     if (state_ == MissionState::canceling) state_ = MissionState::canceled;
 }
-void MissionIntegration::OnReset() { view_ = {}; state_ = MissionState::idle; completed_ = 0; }
+void MissionIntegration::OnReset() { view_ = {}; state_ = MissionState::idle; completed_ = 0; error_ = {}; }
 void MissionIntegration::OnPoll() {
     if (runtime_status().state != roboframe::RuntimeState::running) return;
     try {
@@ -100,6 +100,7 @@ void MissionIntegration::OnPoll() {
             else state_ = MissionState::canceled;
         }
     } catch (...) {
+        error_ = std::current_exception();
         state_ = MissionState::failed;
         Fail();
         throw;

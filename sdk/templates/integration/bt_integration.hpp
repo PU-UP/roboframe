@@ -10,7 +10,7 @@ public:
     using Work=component_template::GoalComponent::Execution;
     explicit BtIntegration(Work::Hooks hooks)
         :work_(std::move(hooks)),
-         action_(work_.server(),[this] { return goal_; },[this](const Work::Result& result) { result_=result; }),
+         action_(work_.server(),[this] { return goal_; },[this](const Work::Result& result) noexcept { result_=result; }),
          tree_({{"Execute",[this] { return action_.Tick(); },[this] { action_.Halt(); }}}) {}
     ~BtIntegration() override { Shutdown(); }
     void Begin(int goal) {
@@ -20,6 +20,7 @@ public:
     }
     void Cancel() { tree_.Halt();action_.Halt();running_=false; }
     bool settled() { return !running_ && action_.Drained(); }
+    // Includes canceled and failed (with error), even when collected by settled/Stop.
     const Work::Result& result() const { return result_; }
 private:
     void OnStart(std::uint64_t) override { work_.Activate(); }

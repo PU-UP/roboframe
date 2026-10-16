@@ -15,6 +15,8 @@ integration 负责生命周期协调与接线：先请求所有组件停止，�
 它不使用 UseServer/UseExecution 接管内部执行器；这些旧 API 的兼容测试留在 sdk/tests。
 GoalComponent 的 server() 只供示例访问目标/状态/取消/结果，生命周期仍由组件管理。
 数据流组件自己的 epoch 与产品 generation 分开，停用时清理旧结果。
+BtIntegration 的 result() 同时保留正常、取消和失败结果；ServerAction 结果回调在控制线程执行一次，
+包括 settled()/Stop 收尾时。收尾完成不等于成功，检查 Result.state/error；回调不抛异常、不重入生命周期。
 
 StreamIntegration 在主线程 Poll 领取结果，所以主线程停顿会延迟这段接线。
 需要独立输出的组件可提供线程安全短回调；接收者须存活到组件停用，回调不等待 IPC。

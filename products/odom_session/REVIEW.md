@@ -2,7 +2,8 @@
 
 基于已提交的同步 odom_session，在 codex/async-server-bt-validation 分支完成。
 保留原同步入口；新增 --mission 模式，两个小组件分别验证 ExecutionChannel 与 Server。
-未改 SDK 公共接口、skills 或个人编辑器配置。
+初次验证未改 SDK/skills；后续按用户授权修复 ServerAction 取消结果交付，并同步模板和 skill。
+SDK 方法签名保持不变，Drained/Reset 收尾也会触发原有结果回调。个人编辑器配置未改。
 
 ## 结论
 
@@ -15,30 +16,31 @@ interface 独立发送。组件不需要知道其他组件、产品或 BT，也�
 
 ## Review 发现与处理
 
-1. **取消不能吞掉收尾失败。** ServerAction::Drained 会领取并丢弃 Result。
-   注入 finish 回调异常后，初稿把失败标为 canceled；新增回归在修复前确定失败。
-   产品现在先检查稳定终态再 Drained，failed 优先于 canceled，运行状态进入 error。
-   SDK 原接口足以完成适配，但这部分需要产品显式处理；已记录反馈，未擅自扩展 SDK。
+1. **取消不能吞掉收尾失败。** 原 ServerAction::Drained 领取并丢弃 Result。
+   注入 finish 回调异常后，初稿把失败标为 canceled；产品曾临时查询终态保护。
+   SDK 现通过原有结果回调一次性交付所有终态和 error，产品删除查询绕法并保留原始异常。
+   SDK 新回归在旧实现上失败、修复后通过；模板和产品同时覆盖取消、收尾失败及停止重启。
 2. **异常退出也需排空发送队列。** 初稿只有正常路径 Drain，异常仅靠析构。
    20 次试验没有观测丢失，但 StdioChannel 析构不保证排空，不能作为输出协议保证。
    当前异常路径先 Shutdown 再 Drain，并验证非法输入后最终输出 inactive。
    这是本次入口实现问题，不归因于 skill 缺陷。
 
-维护者反馈保留在仓库 .roboframe/feedback/；本次开发记录仍为“未读”，
-已在 workaround/validation 写明修复和证据，未自行批准或提交反馈。
+反馈保留在仓库 .roboframe/feedback/；本轮 SDK 维护审查将上述两项标为已解决，
+分别记录 SDK 修复和产品入口修复的依据；反馈不提交。
 
 ## 验证证据
 
 | 检查 | 结果 |
 |---|---|
-| build-dev 构建及完整 CTest | 23/23，通过原同步回归与新增异步/BT 路径 |
-| 新增 4 项测试各重复 30 次 | 120 次通过，无失败 |
+| build-dev 构建及完整 CTest | 24/24，含 ServerAction 一次性交付、模板与产品回归 |
+| 本轮：ServerAction、BT 模板、mission 各重复 20 次 | 60 次通过，无失败 |
+| 初次验证：新增 4 项测试各重复 30 次 | 120 次通过，无失败 |
 | 原始 intel.log.gz 任务模式 | 两目标成功；26915 样本、509.139428 米，与同步结果一致 |
 | 组件独立构建/测试/安装 | odom、path_distance、distance_goal 通过，不需要产品 |
 | 安装包搬迁后的外部消费者 | 新组件公开头、生成版本头及导出目标可用 |
 | 产品纯包与两种混合来源 | 三种构建均运行产品测试通过 |
 | 通用 tests/build_isolation_test.py | 全部通过 |
-| AddressSanitizer + UndefinedBehaviorSanitizer | 新组件及 mission 三项测试通过 |
+| 初次验证：AddressSanitizer + UndefinedBehaviorSanitizer | 新组件及 mission 三项测试通过 |
 | ThreadSanitizer | 编译成功；WSL 启动失败 unexpected memory mapping，未完成竞态检查 |
 
 具体回归覆盖满队列保留输入、已完成结果占用额度、异步异常、取消/清旧结果、重启清零、

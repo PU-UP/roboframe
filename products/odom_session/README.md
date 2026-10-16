@@ -118,7 +118,8 @@ PROGRESS 是可合并的最新进度；finish 输出 inactive，表示该目标�
 
 控制线程不 Poll 时，异步组件仍可完成已入队计算，Server 和发送线程仍周期输出；
 但新里程无法转交、BT 无法推进。没有声称全链路独立于控制线程。
-ServerAction 的 Drained 丢弃结果，产品在取消路径先检查终态，避免把 finish 异常误报为正常取消。
+ServerAction 在正常完成或取消收尾后，通过控制线程上的结果回调一次性交付终态及异常。
+产品不额外查询 Server 终态；finish 失败标记为 failed，原始异常由 error() 保留，Reset/Start 清除。
 两个目标都复用同一 Server，前一目标领取结果后才提交下一目标。
 
 ## 异步版本验收
@@ -130,7 +131,7 @@ ctest --test-dir build-dev --output-on-failure
 python3 products/odom_session/tests/delivery_test.py
 ~~~
 
-23 项常规测试包含同步回归、组件独立端口、满队列重试、旧结果清理、BT 两步成功、
+24 项常规测试包含同步回归、组件独立端口、满队列重试、旧结果清理、BT 两步成功、
 超时、取消和取消收尾异常、重启，以及控制线程不 Poll 时真实管道仍收到周期进度。
 delivery_test 在临时目录验证组件独立构建/安装、安装包搬迁消费者、纯包及混合来源产品；
 它不修改 build-dev 或个人编辑器配置。验证结论和限制见 REVIEW.md。

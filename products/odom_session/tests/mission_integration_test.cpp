@@ -5,6 +5,7 @@
 #include <poll.h>
 #include <stdexcept>
 #include <thread>
+#include <string>
 #include <unistd.h>
 using odom_session::MissionIntegration;
 using odom_session::MissionState;
@@ -31,6 +32,7 @@ int main() {
     Send(mission, {3, {3, 5, 0}});
     Until(mission, [&] { return mission.state() == MissionState::succeeded; });
     Check(mission.completed_steps() == 2 && mission.view().count == 3 && mission.view().meters == 6);
+    Check(!mission.error());
     mission.Stop();
     mission.Start();
     Check(mission.view().count == 0);
@@ -51,12 +53,15 @@ int main() {
     mission.Begin(1, 2, std::chrono::milliseconds(30));
     Until(mission, [&] { return mission.state() == MissionState::failed; });
     Check(mission.completed_steps() == 0 && mission.runtime_status().state == roboframe::RuntimeState::error);
+    Check(bool(mission.error()));
     mission.Reset();
+    Check(!mission.error());
     mission.Start();
     mission.Begin(1, 2);
     mission.Poll();
     mission.Cancel();
     Until(mission, [&] { return mission.state() == MissionState::canceled; });
+    Check(!mission.error());
     mission.Begin(1, 2);
     Send(mission, {0, {0, 0, 0}});
     Send(mission, {1, {2, 0, 0}});
@@ -96,7 +101,13 @@ int main() {
     if (broken_finish.state() != MissionState::failed)
         throw std::runtime_error("finish failure reported as clean cancellation");
     Check(broken_finish.runtime_status().state == roboframe::RuntimeState::error);
+    Check(bool(broken_finish.error()));
+    try { std::rethrow_exception(broken_finish.error()); }
+    catch (const std::runtime_error& e) { Check(std::string(e.what()) == "finish output failed"); }
     broken_finish.Stop();
+    broken_finish.Reset();broken_finish.Start();broken_finish.Begin(1, 2);broken_finish.Poll();
+    broken_finish.Stop();
+    Check(broken_finish.state() == MissionState::failed && bool(broken_finish.error()));
 
     // Observe real pipe output while this control thread does NOT call Poll.
     int input[2], output[2];

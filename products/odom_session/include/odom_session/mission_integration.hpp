@@ -17,6 +17,7 @@ public:
     void Begin(double first, double second, std::chrono::milliseconds timeout = std::chrono::seconds(2));
     void Cancel() noexcept;
     MissionState state() const { return state_; }
+    std::exception_ptr error() const { return error_; }
     const path_distance::Sample& view() const { return view_; }
     std::size_t pending() const { return distance_.retained(); }
     unsigned completed_steps() const { return completed_; }
@@ -27,7 +28,9 @@ private:
     void OnReset() override;
     void OnPoll() override;
     bool Drained();
+    void OnResult(const Execution::Result& result) noexcept;
     MissionState state_ = MissionState::idle;
+    std::exception_ptr error_;
     bool inputs_open_ = false;
     unsigned completed_ = 0;
     path_distance::Sample view_{};
